@@ -3,7 +3,11 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "../access/EducRoles.sol";
+import "../../access/roles/EducRoles.sol";
+import "../../config/constants/SystemConstants.sol";
+import "../../interfaces/IEducMultisig.sol";
+import "./MultisigEvents.sol";
+import "./types/MultisigTypes.sol";
 
 /**
  * @title EducMultisig

@@ -3,7 +3,8 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
-import "./EducRoles.sol";
+import "./roles/EducRoles.sol";
+
 
 /**
  * @title EducAccess

@@ -4,8 +4,9 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "../interfaces/IEducEmergencyEnabled.sol";
-import "../access/EducRoles.sol";
+import "../../interfaces/IEducEmergencyEnabled.sol";
+import "../../access/roles/EducRoles.sol";
+import "./EmergencyEvents.sol";
 
 /**
  * @title EducEmergencyEnabled
@@ -22,32 +23,6 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
     // Emergency recovery contract address
     address public emergencyRecoveryContract;
 
-    // Events
-    event EmergencyWithdrawal(
-        address indexed token,
-        uint256 amount,
-        address indexed destination,
-        uint256 timestamp
-    );
-
-    event EmergencyETHWithdrawal(
-        uint256 amount,
-        address indexed destination,
-        uint256 timestamp
-    );
-
-    event RecoveryDestinationUpdated(
-        address previousDestination,
-        address newDestination,
-        uint256 timestamp
-    );
-    
-    event EmergencyRecoveryContractUpdated(
-        address previousContract,
-        address newContract,
-        uint256 timestamp
-    );
-
     /**
      * @dev Modifier to ensure only emergency recovery contract can call
      */
@@ -59,6 +34,14 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         );
         _;
     }
+    
+    /**
+     * @dev Modifier to ensure the address is valid (not zero)
+     */
+    modifier validAddress(address address_) {
+        require(address_ != address(0), "EducEmergencyEnabled: zero address not allowed");
+        _;
+    }
 
     /**
      * @dev Constructor sets the recovery destination and recovery contract
@@ -66,10 +49,19 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
      * @param _emergencyRecoveryContract Address of the emergency recovery contract
      */
     constructor(address _recoveryDestination, address _emergencyRecoveryContract) {
-        require(_recoveryDestination != address(0), "EducEmergencyEnabled: Invalid recovery destination");
+        _validateConstructorParams(_recoveryDestination);
         
         recoveryDestination = _recoveryDestination;
         emergencyRecoveryContract = _emergencyRecoveryContract;
+    }
+    
+    /**
+     * @dev Validates constructor parameters
+     * @param _recoveryDestination Recovery destination to validate
+     */
+    function _validateConstructorParams(address _recoveryDestination) private pure {
+        require(_recoveryDestination != address(0), 
+            "EducEmergencyEnabled: Invalid recovery destination");
     }
 
     /**
@@ -79,13 +71,12 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
     function setRecoveryDestination(address _recoveryDestination) 
         external
         onlyRole(EducRoles.ADMIN_ROLE)
+        validAddress(_recoveryDestination)
     {
-        require(_recoveryDestination != address(0), "EducEmergencyEnabled: Invalid recovery destination");
-        
         address oldDestination = recoveryDestination;
         recoveryDestination = _recoveryDestination;
         
-        emit RecoveryDestinationUpdated(
+        emit EmergencyEvents.RecoveryDestinationUpdated(
             oldDestination,
             _recoveryDestination,
             block.timestamp
@@ -103,7 +94,7 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         address oldContract = emergencyRecoveryContract;
         emergencyRecoveryContract = _emergencyRecoveryContract;
         
-        emit EmergencyRecoveryContractUpdated(
+        emit EmergencyEvents.EmergencyRecoveryContractUpdated(
             oldContract,
             _emergencyRecoveryContract,
             block.timestamp
@@ -120,18 +111,17 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         external
         override
         onlyEmergencyRecovery
+        validAddress(token)
         returns (bool success)
     {
-        require(token != address(0), "EducEmergencyEnabled: Invalid token address");
         require(amount > 0, "EducEmergencyEnabled: Invalid amount");
         
-        uint256 balance = IERC20(token).balanceOf(address(this));
-        uint256 amountToWithdraw = amount > balance ? balance : amount;
+        uint256 amountToWithdraw = _getWithdrawalAmount(token, amount);
         
         if (amountToWithdraw > 0) {
-            IERC20(token).safeTransfer(recoveryDestination, amountToWithdraw);
+            _transferTokens(token, amountToWithdraw);
             
-            emit EmergencyWithdrawal(
+            emit EmergencyEvents.EmergencyWithdrawal(
                 token,
                 amountToWithdraw,
                 recoveryDestination,
@@ -140,6 +130,30 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         }
         
         return true;
+    }
+    
+    /**
+     * @dev Gets the amount to withdraw, respecting balance limits
+     * @param token Token address
+     * @param requestedAmount Requested amount to withdraw
+     * @return amountToWithdraw Actual amount that can be withdrawn
+     */
+    function _getWithdrawalAmount(address token, uint256 requestedAmount) 
+        private 
+        view 
+        returns (uint256 amountToWithdraw) 
+    {
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        return requestedAmount > balance ? balance : requestedAmount;
+    }
+    
+    /**
+     * @dev Transfers tokens to the recovery destination
+     * @param token Token address
+     * @param amount Amount to transfer
+     */
+    function _transferTokens(address token, uint256 amount) private {
+        IERC20(token).safeTransfer(recoveryDestination, amount);
     }
 
     /**
@@ -155,14 +169,12 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
     {
         require(amount > 0, "EducEmergencyEnabled: Invalid amount");
         
-        uint256 balance = address(this).balance;
-        uint256 amountToWithdraw = amount > balance ? balance : amount;
+        uint256 amountToWithdraw = _getETHWithdrawalAmount(amount);
         
         if (amountToWithdraw > 0) {
-            (bool sent, ) = recoveryDestination.call{value: amountToWithdraw}("");
-            require(sent, "EducEmergencyEnabled: Failed to send ETH");
+            _transferETH(amountToWithdraw);
             
-            emit EmergencyETHWithdrawal(
+            emit EmergencyEvents.EmergencyETHWithdrawal(
                 amountToWithdraw,
                 recoveryDestination,
                 block.timestamp
@@ -170,6 +182,29 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         }
         
         return true;
+    }
+    
+    /**
+     * @dev Gets the amount of ETH to withdraw, respecting balance limits
+     * @param requestedAmount Requested amount to withdraw
+     * @return amountToWithdraw Actual amount that can be withdrawn
+     */
+    function _getETHWithdrawalAmount(uint256 requestedAmount) 
+        private 
+        view 
+        returns (uint256 amountToWithdraw) 
+    {
+        uint256 balance = address(this).balance;
+        return requestedAmount > balance ? balance : requestedAmount;
+    }
+    
+    /**
+     * @dev Transfers ETH to the recovery destination
+     * @param amount Amount of ETH to transfer
+     */
+    function _transferETH(uint256 amount) private {
+        (bool sent, ) = recoveryDestination.call{value: amount}("");
+        require(sent, "EducEmergencyEnabled: Failed to send ETH");
     }
     
     /**

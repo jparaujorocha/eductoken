@@ -5,16 +5,16 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import "./core/EducToken.sol";
-import "./core/EducEducator.sol";
-import "./core/EducStudent.sol";
-import "./core/EducCourse.sol";
+import "./access/roles/EducRoles.sol";
+import "./config/constants/SystemConstants.sol";
+import "./core/token/EducToken.sol";
+import "./core/educator/EducEducator.sol";
+import "./core/student/EducStudent.sol";
+import "./core/course/EducCourse.sol";
 import "./config/EducConfig.sol";
-import "./security/EducPause.sol";
-import "./governance/EducMultisig.sol";
-import "./governance/EducProposal.sol";
-import "./access/EducRoles.sol";
-
+import "./security/pause/EducPause.sol";
+import "./governance/multisig/EducMultisig.sol";
+import "./governance/proposal/EducProposal.sol";
 /**
  * @title EducLearning
  * @dev Comprehensive integration contract for the educational ecosystem with enhanced reward system

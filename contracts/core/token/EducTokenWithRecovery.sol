@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "../access/EducRoles.sol";
-import "../interfaces/IEducToken.sol";
-import "../interfaces/IEducStudent.sol";
+
+import "./EducToken.sol";
+import "../../security/emergency/EducEmergencyEnabled.sol";
 
 /**
- * @title EducToken
- * @dev ERC20 token for educational incentives with enhanced reward system and activity tracking
+ * @title EducTokenWithRecovery
+ * @dev ERC20 token for educational incentives with emergency recovery mechanisms
  */
-contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToken {
+contract EducTokenWithRecovery is 
+    ERC20, 
+    AccessControl, 
+    Pausable, 
+    ReentrancyGuard, 
+    IEducToken,
+    EducEmergencyEnabled 
+{
     // Constants
     uint256 public constant INITIAL_SUPPLY = 10_000_000 * 10**18; // 10 million tokens
     uint256 public constant MAX_MINT_AMOUNT = 100_000 * 10**18; // 100,000 tokens per transaction
@@ -35,22 +38,20 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
     bytes32 public constant EDUCATOR_ROLE = keccak256("EDUCATOR_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
-    // Modifiers
-    modifier onlyAdmin() {
-        require(hasRole(ADMIN_ROLE, msg.sender), "EducToken: caller is not an admin");
-        _;
-    }
-
-    modifier onlyMinter() {
-        require(hasRole(MINTER_ROLE, msg.sender), "EducToken: caller is not a minter");
-        _;
-    }
-
     /**
      * @dev Constructor that initializes the token with name, symbol and initial supply
      * @param admin The address that will be granted the admin role
+     * @param treasury Address where recovered tokens will be sent in emergency
+     * @param emergencyRecoveryContract Address of emergency recovery contract
      */
-    constructor(address admin) ERC20("EducToken", "EDUC") {
+    constructor(
+        address admin,
+        address treasury,
+        address emergencyRecoveryContract
+    ) 
+        ERC20("EducToken", "EDUC")
+        EducEmergencyEnabled(treasury, emergencyRecoveryContract) 
+    {
         require(admin != address(0), "EducToken: admin cannot be zero address");
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -65,23 +66,23 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
      * @dev Sets the student contract address for activity tracking
      * @param _studentContract Address of the student contract
      */
-    function setStudentContract(address _studentContract) external onlyAdmin {
+    function setStudentContract(address _studentContract) external onlyRole(ADMIN_ROLE) {
         require(_studentContract != address(0), "EducToken: student contract cannot be zero address");
         studentContract = IEducStudent(_studentContract);
-        emit StudentContractSet(_studentContract);
+        emit TokenEvents.StudentContractSet(_studentContract);
     }
 
     /**
      * @dev Pauses all token transfers and minting operations
      */
-    function pause() external onlyAdmin {
+    function pause() external onlyRole(ADMIN_ROLE) {
         _pause();
     }
 
     /**
      * @dev Unpauses all token transfers and minting operations
      */
-    function unpause() external onlyAdmin {
+    function unpause() external onlyRole(ADMIN_ROLE) {
         _unpause();
     }
 
@@ -90,7 +91,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
      * @param to The address that will receive the minted tokens
      * @param amount The amount of tokens to mint
      */
-    function mint(address to, uint256 amount) external override onlyMinter whenNotPaused nonReentrant {
+    function mint(address to, uint256 amount) external override onlyRole(MINTER_ROLE) whenNotPaused nonReentrant {
         require(to != address(0), "EducToken: mint to the zero address");
         require(amount > 0, "EducToken: mint amount must be positive");
         require(amount <= MAX_MINT_AMOUNT, "EducToken: amount exceeds max mint amount");
@@ -103,7 +104,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         _mint(to, amount);
         totalMinted += amount;
 
-        emit TokensMinted(to, amount, msg.sender);
+        emit TokenEvents.TokensMinted(to, amount, msg.sender);
     }
     
     /**
@@ -114,7 +115,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
      */
     function mintReward(address student, uint256 amount, string calldata reason) 
         external 
-        onlyMinter 
+        onlyRole(MINTER_ROLE) 
         whenNotPaused 
         nonReentrant 
     {
@@ -131,10 +132,98 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         _mint(student, amount);
         totalMinted += amount;
         
-        emit RewardIssued(student, amount, reason);
-        emit TokensMinted(student, amount, msg.sender);
+        emit TokenEvents.RewardIssued(student, amount, reason);
+        emit TokenEvents.TokensMinted(student, amount, msg.sender);
     }
     
+    function mintReward(TokenTypes.MintRewardParams calldata params) external override 
+    onlyRole(MINTER_ROLE) 
+    whenNotPaused 
+    nonReentrant 
+{
+    require(params.student != address(0), "EducToken: mint to the zero address");
+    require(params.amount > 0, "EducToken: mint amount must be positive");
+    require(params.amount <= MAX_MINT_AMOUNT, "EducToken: amount exceeds max mint amount");
+    require(bytes(params.reason).length > 0, "EducToken: reason cannot be empty");
+    
+    // Track daily minting limits
+    uint256 today = block.timestamp / 1 days;
+    dailyMinting[today] += params.amount;
+    require(dailyMinting[today] <= DAILY_MINT_LIMIT, "EducToken: daily mint limit exceeded");
+    
+    _mint(params.student, params.amount);
+    totalMinted += params.amount;
+    
+    emit TokenEvents.RewardIssued(params.student, params.amount, params.reason);
+    emit TokenEvents.TokensMinted(params.student, params.amount, msg.sender);
+}
+
+function batchMintReward(TokenTypes.BatchMintRewardParams calldata params) external override 
+    onlyRole(MINTER_ROLE) 
+    whenNotPaused 
+    nonReentrant 
+{
+    uint256 studentsLength = params.students.length;
+    require(
+        studentsLength == params.amounts.length && 
+        studentsLength == params.reasons.length,
+        "EducToken: arrays length mismatch"
+    );
+    require(studentsLength > 0, "EducToken: empty arrays");
+    
+    // Calculate total amount and validate inputs
+    uint256 totalAmount = 0;
+    for (uint256 i = 0; i < studentsLength; i++) {
+        require(params.students[i] != address(0), "EducToken: mint to the zero address");
+        require(params.amounts[i] > 0, "EducToken: mint amount must be positive");
+        require(params.amounts[i] <= MAX_MINT_AMOUNT, "EducToken: amount exceeds max mint amount");
+        require(bytes(params.reasons[i]).length > 0, "EducToken: reason cannot be empty");
+        
+        totalAmount += params.amounts[i];
+    }
+    
+    // Track daily minting limits
+    uint256 today = block.timestamp / 1 days;
+    dailyMinting[today] += totalAmount;
+    require(dailyMinting[today] <= DAILY_MINT_LIMIT, "EducToken: daily mint limit exceeded");
+    
+    // Process each student
+    for (uint256 i = 0; i < studentsLength; i++) {
+        _mint(params.students[i], params.amounts[i]);
+        
+        emit TokenEvents.RewardIssued(params.students[i], params.amounts[i], params.reasons[i]);
+        emit TokenEvents.TokensMinted(params.students[i], params.amounts[i], msg.sender);
+    }
+    
+    totalMinted += totalAmount;
+}
+
+function burnFromInactive(TokenTypes.BurnInactiveParams calldata params) external override 
+    onlyRole(ADMIN_ROLE) 
+    whenNotPaused 
+    nonReentrant 
+{
+    require(params.from != address(0), "EducToken: burn from the zero address");
+    require(params.amount > 0, "EducToken: burn amount must be positive");
+    require(balanceOf(params.from) >= params.amount, "EducToken: burn amount exceeds balance");
+    
+    // Validate account inactivity 
+    require(_isAccountInactive(params.from), "EducToken: account is not inactive");
+    
+    _burn(params.from, params.amount);
+    totalBurned += params.amount;
+
+    emit TokenEvents.TokensBurnedFrom(params.from, params.amount, msg.sender, params.reason);
+}
+
+function getTotalMinted() external view override returns (uint256 amount) {
+    return totalMinted;
+}
+
+function getTotalBurned() external view override returns (uint256 amount) {
+    return totalBurned;
+}
+
     /**
      * @dev Batch mints tokens as educational rewards to multiple students
      * @param students Array of student addresses
@@ -147,7 +236,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         string[] calldata reasons
     ) 
         external 
-        onlyMinter 
+        onlyRole(MINTER_ROLE) 
         whenNotPaused 
         nonReentrant 
     {
@@ -179,8 +268,8 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         for (uint256 i = 0; i < studentsLength; i++) {
             _mint(students[i], amounts[i]);
             
-            emit RewardIssued(students[i], amounts[i], reasons[i]);
-            emit TokensMinted(students[i], amounts[i], msg.sender);
+            emit TokenEvents.RewardIssued(students[i], amounts[i], reasons[i]);
+            emit TokenEvents.TokensMinted(students[i], amounts[i], msg.sender);
         }
         
         totalMinted += totalAmount;
@@ -197,7 +286,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         _burn(msg.sender, amount);
         totalBurned += amount;
 
-        emit TokensBurned(msg.sender, amount);
+        emit TokenEvents.TokensBurned(msg.sender, amount);
     }
 
     /**
@@ -209,7 +298,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
     function burnFromInactive(address from, uint256 amount, string calldata reason) 
         external 
         override 
-        onlyAdmin 
+        onlyRole(ADMIN_ROLE) 
         whenNotPaused 
         nonReentrant 
     {
@@ -223,7 +312,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         _burn(from, amount);
         totalBurned += amount;
 
-        emit TokensBurnedFrom(from, amount, msg.sender, reason);
+        emit TokenEvents.TokensBurnedFrom(from, amount, msg.sender, reason);
     }
 
     /**

@@ -8,307 +8,356 @@ import "./EducMultisig.sol";
 
 /**
  * @title EducProposal
- * @dev Manages governance proposals in the EducLearning system
+ * @dev Advanced governance proposal management system
  */
 contract EducProposal is AccessControl, ReentrancyGuard {
-    // Constants
-    uint256 public constant MAX_DESCRIPTION_LENGTH = 200;
+    // Proposal lifecycle constants
+    uint256 public constant MAX_DESCRIPTION_LENGTH = 500;
     uint256 public constant PROPOSAL_EXPIRATION_TIME = 7 days;
-    
-    // Enum for proposal status
+
+    // Proposal status enum
     enum ProposalStatus {
+        Pending,
         Active,
         Executed,
-        Cancelled,
+        Rejected,
         Expired
     }
-    
-    // Enum for proposal instruction types
+
+    // Proposal instruction types
     enum InstructionType {
-        ChangeAuthority,
-        TogglePause,
+        UpdateConfig,
         RegisterEducator,
         UpdateEducatorStatus,
+        CreateCourse,
+        UpdateCourse,
         AddSigner,
         RemoveSigner,
-        ChangeThreshold
+        ChangeThreshold,
+        TransferFunds,
+        EmergencyPause
     }
-    
-    // Structure for proposal instructions
-    struct ProposalInstruction {
+
+    // Proposal structure with comprehensive tracking
+    struct Proposal {
+        uint256 id;
+        address proposer;
         InstructionType instructionType;
         bytes data;
-    }
-    
-    // Structure for proposals
-    struct Proposal {
-        uint256 index;
-        address multisig;
-        ProposalInstruction instruction;
-        mapping(address => bool) approvals;
+        address[] approvers;
+        address[] rejectors;
         ProposalStatus status;
         uint256 createdAt;
-        uint256 closedAt;
+        uint256 expiresAt;
         string description;
-        address proposer;
-        uint8 approvalCount;
+        uint256 requiredApprovals;
     }
-    
-    // Storage
+
+    // Storage mappings
     mapping(uint256 => Proposal) public proposals;
+    uint256 public proposalCount;
+
+    // Multisig reference
     EducMultisig public multisig;
-    
-    // Events
+
+    // Events with comprehensive logging
     event ProposalCreated(
         uint256 indexed proposalId,
-        address multisig,
         address indexed proposer,
-        uint256 timestamp,
-        string description
-    );
-    
-    event ProposalApproved(
-        uint256 indexed proposalId,
-        address indexed signer,
+        InstructionType instructionType,
         uint256 timestamp
     );
-    
+
+    event ProposalApproved(
+        uint256 indexed proposalId,
+        address indexed approver,
+        uint256 approvalCount,
+        uint256 timestamp
+    );
+
+    event ProposalRejected(
+        uint256 indexed proposalId,
+        address indexed rejector,
+        uint256 rejectionCount,
+        uint256 timestamp
+    );
+
     event ProposalExecuted(
         uint256 indexed proposalId,
         address indexed executor,
         uint256 timestamp
     );
-    
-    event ProposalCancelled(
+
+    event ProposalExpired(
         uint256 indexed proposalId,
-        address indexed canceller,
         uint256 timestamp
     );
-    
+
     /**
-     * @dev Constructor to initialize the proposal contract
-     * @param multisigAddress Address of the multisig contract
-     * @param admin Admin address
+     * @dev Constructor sets up admin roles and multisig reference
+     * @param _multisig Multisig contract address
+     * @param admin Administrator address
      */
-    constructor(address multisigAddress, address admin) {
-        require(multisigAddress != address(0), "EducProposal: multisig cannot be zero address");
-        require(admin != address(0), "EducProposal: admin cannot be zero address");
-        
-        multisig = EducMultisig(multisigAddress);
-        
+    constructor(address _multisig, address admin) {
+        require(_multisig != address(0), "EducProposal: Invalid multisig");
+        require(admin != address(0), "EducProposal: Invalid admin");
+
+        multisig = EducMultisig(_multisig);
+
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(EducRoles.ADMIN_ROLE, admin);
     }
-    
+
     /**
      * @dev Creates a new proposal
-     * @param instruction Proposal instruction
-     * @param description Description of the proposal
-     * @return uint256 ID of the created proposal
+     * @param instructionType Type of proposal instruction
+     * @param data Encoded proposal data
+     * @param description Proposal description
+     * @param requiredApprovals Number of approvals needed
      */
     function createProposal(
-        ProposalInstruction memory instruction,
-        string calldata description
+        InstructionType instructionType,
+        bytes calldata data,
+        string calldata description,
+        uint256 requiredApprovals
     ) 
         external 
         nonReentrant 
         returns (uint256) 
     {
-        require(bytes(description).length <= MAX_DESCRIPTION_LENGTH, "EducProposal: description too long");
-        require(multisig.isSigner(msg.sender), "EducProposal: caller is not a signer");
-        
-        uint256 proposalId = multisig.proposalCount();
-        uint256 currentTime = block.timestamp;
-        
-        Proposal storage proposal = proposals[proposalId];
-        proposal.index = proposalId;
-        proposal.multisig = address(multisig);
-        proposal.instruction = instruction;
-        proposal.status = ProposalStatus.Active;
-        proposal.createdAt = currentTime;
-        proposal.closedAt = 0;
-        proposal.description = description;
-        proposal.proposer = msg.sender;
-        proposal.approvalCount = 1;
-        
-        // Auto-approve by the proposer
-        proposal.approvals[msg.sender] = true;
-        
-        // Increment multisig proposal count
-        multisig.incrementProposalCount();
-        
-        emit ProposalCreated(
-            proposalId,
-            address(multisig),
-            msg.sender,
-            currentTime,
-            description
+        require(
+            multisig.isSigner(msg.sender), 
+            "EducProposal: Caller not a signer"
         );
-        
-        return proposalId;
+        require(
+            bytes(description).length <= MAX_DESCRIPTION_LENGTH,
+            "EducProposal: Description too long"
+        );
+        require(
+            requiredApprovals > 0 && 
+            requiredApprovals <= multisig.threshold(),
+            "EducProposal: Invalid approval requirement"
+        );
+
+        proposalCount++;
+
+        proposals[proposalCount] = Proposal({
+            id: proposalCount,
+            proposer: msg.sender,
+            instructionType: instructionType,
+            data: data,
+            approvers: new address[](0),
+            rejectors: new address[](0),
+            status: ProposalStatus.Pending,
+            createdAt: block.timestamp,
+            expiresAt: block.timestamp + PROPOSAL_EXPIRATION_TIME,
+            description: description,
+            requiredApprovals: requiredApprovals
+        });
+
+        emit ProposalCreated(
+            proposalCount, 
+            msg.sender, 
+            instructionType, 
+            block.timestamp
+        );
+
+        return proposalCount;
     }
-    
+
     /**
      * @dev Approves a proposal
-     * @param proposalId ID of the proposal to approve
+     * @param proposalId Proposal identifier
      */
-    function approveProposal(uint256 proposalId) external nonReentrant {
-        require(multisig.isSigner(msg.sender), "EducProposal: caller is not a signer");
-        
+    function approveProposal(uint256 proposalId) 
+        external 
+        nonReentrant 
+    {
         Proposal storage proposal = proposals[proposalId];
-        require(proposal.createdAt > 0, "EducProposal: proposal does not exist");
-        require(proposal.status == ProposalStatus.Active, "EducProposal: proposal is not active");
-        require(!proposal.approvals[msg.sender], "EducProposal: already approved");
         
-        // Check for expiration
-        if (block.timestamp > proposal.createdAt + PROPOSAL_EXPIRATION_TIME) {
-            proposal.status = ProposalStatus.Expired;
-            proposal.closedAt = block.timestamp;
-            emit ProposalCancelled(proposalId, msg.sender, block.timestamp);
-            revert("EducProposal: proposal expired");
-        }
-        
-        proposal.approvals[msg.sender] = true;
-        proposal.approvalCount++;
-        
-        emit ProposalApproved(
-            proposalId,
-            msg.sender,
-            block.timestamp
-        );
-    }
-    
-    /**
-     * @dev Executes a proposal
-     * @param proposalId ID of the proposal to execute
-     */
-    function executeProposal(uint256 proposalId) external nonReentrant {
-        Proposal storage proposal = proposals[proposalId];
-        require(proposal.createdAt > 0, "EducProposal: proposal does not exist");
-        require(proposal.status == ProposalStatus.Active, "EducProposal: proposal is not active");
-        
-        // Check for expiration
-        if (block.timestamp > proposal.createdAt + PROPOSAL_EXPIRATION_TIME) {
-            proposal.status = ProposalStatus.Expired;
-            proposal.closedAt = block.timestamp;
-            emit ProposalCancelled(proposalId, msg.sender, block.timestamp);
-            revert("EducProposal: proposal expired");
-        }
-        
-        // Check for sufficient approvals
-        require(proposal.approvalCount >= multisig.threshold(), "EducProposal: not enough approvals");
-        
-        // Execute the instruction based on its type
-        executeInstruction(proposal.instruction);
-        
-        // Update proposal status
-        proposal.status = ProposalStatus.Executed;
-        proposal.closedAt = block.timestamp;
-        
-        emit ProposalExecuted(
-            proposalId,
-            msg.sender,
-            block.timestamp
-        );
-    }
-    
-    /**
-     * @dev Cancels a proposal
-     * @param proposalId ID of the proposal to cancel
-     */
-    function cancelProposal(uint256 proposalId) external nonReentrant {
-        Proposal storage proposal = proposals[proposalId];
-        require(proposal.createdAt > 0, "EducProposal: proposal does not exist");
-        require(proposal.status == ProposalStatus.Active, "EducProposal: proposal is not active");
-        
-        // Only the proposer or an admin can cancel
         require(
-            proposal.proposer == msg.sender || hasRole(EducRoles.ADMIN_ROLE, msg.sender),
-            "EducProposal: not authorized to cancel"
+            multisig.isSigner(msg.sender), 
+            "EducProposal: Caller not a signer"
         );
+        require(
+            proposal.status == ProposalStatus.Pending, 
+            "EducProposal: Invalid proposal status"
+        );
+        require(
+            block.timestamp < proposal.expiresAt, 
+            "EducProposal: Proposal expired"
+        );
+
+        // Prevent duplicate approvals and rejections
+        for (uint256 i = 0; i < proposal.approvers.length; i++) {
+            require(
+                proposal.approvers[i] != msg.sender, 
+                "EducProposal: Already approved"
+            );
+        }
+
+        for (uint256 i = 0; i < proposal.rejectors.length; i++) {
+            require(
+                proposal.rejectors[i] != msg.sender, 
+                "EducProposal: Cannot approve after rejection"
+            );
+        }
+
+        proposal.approvers.push(msg.sender);
+
+        emit ProposalApproved(
+            proposalId, 
+            msg.sender, 
+            proposal.approvers.length,
+            block.timestamp
+        );
+
+        // Check if proposal meets approval threshold
+        if (proposal.approvers.length >= proposal.requiredApprovals) {
+            _executeProposal(proposalId);
+        }
+    }
+
+    /**
+     * @dev Rejects a proposal
+     * @param proposalId Proposal identifier
+     */
+    function rejectProposal(uint256 proposalId) 
+        external 
+        nonReentrant 
+    {
+        Proposal storage proposal = proposals[proposalId];
         
-        proposal.status = ProposalStatus.Cancelled;
-        proposal.closedAt = block.timestamp;
+        require(
+            multisig.isSigner(msg.sender), 
+            "EducProposal: Caller not a signer"
+        );
+        require(
+            proposal.status == ProposalStatus.Pending, 
+            "EducProposal: Invalid proposal status"
+        );
+
+        // Prevent duplicate rejections and approvals
+        for (uint256 i = 0; i < proposal.rejectors.length; i++) {
+            require(
+                proposal.rejectors[i] != msg.sender, 
+                "EducProposal: Already rejected"
+            );
+        }
+
+        for (uint256 i = 0; i < proposal.approvers.length; i++) {
+            require(
+                proposal.approvers[i] != msg.sender, 
+                "EducProposal: Cannot reject after approval"
+            );
+        }
+
+        proposal.rejectors.push(msg.sender);
+
+        emit ProposalRejected(
+            proposalId, 
+            msg.sender, 
+            proposal.rejectors.length,
+            block.timestamp
+        );
+
+        // Optional: Auto-reject if majority rejects
+        if (proposal.rejectors.length > multisig.threshold() / 2) {
+            proposal.status = ProposalStatus.Rejected;
+        }
+    }
+
+    /**
+     * @dev Internal proposal execution logic
+     * @param proposalId Proposal identifier
+     */
+    function _executeProposal(uint256 proposalId) internal {
+        Proposal storage proposal = proposals[proposalId];
         
-        emit ProposalCancelled(
-            proposalId,
-            msg.sender,
+        proposal.status = ProposalStatus.Executed;
+
+        // Execute based on instruction type
+        if (proposal.instructionType == InstructionType.AddSigner) {
+            address signerToAdd = abi.decode(proposal.data, (address));
+            multisig.addSigner(signerToAdd);
+        } else if (proposal.instructionType == InstructionType.RemoveSigner) {
+            address signerToRemove = abi.decode(proposal.data, (address));
+            multisig.removeSigner(signerToRemove);
+        } else if (proposal.instructionType == InstructionType.ChangeThreshold) {
+            uint8 newThreshold = abi.decode(proposal.data, (uint8));
+            multisig.changeThreshold(newThreshold);
+        }
+        // Additional instruction types can be added here
+
+        emit ProposalExecuted(
+            proposalId, 
+            msg.sender, 
             block.timestamp
         );
     }
-    
+
     /**
-     * @dev Gets the details of a proposal
-     * @param proposalId ID of the proposal
-     * @return instruction, status, createdAt, closedAt, description, proposer, approvalCount
+     * @dev Checks and updates proposal status if expired
+     * @param proposalId Proposal identifier
+     * @return Current proposal status
      */
-    function getProposal(uint256 proposalId) 
+    function checkProposalStatus(uint256 proposalId) 
+        external 
+        returns (ProposalStatus) 
+    {
+        Proposal storage proposal = proposals[proposalId];
+        
+        if (block.timestamp >= proposal.expiresAt && 
+            proposal.status == ProposalStatus.Pending) {
+            proposal.status = ProposalStatus.Expired;
+            
+            emit ProposalExpired(proposalId, block.timestamp);
+            return ProposalStatus.Expired;
+        }
+        
+        return proposal.status;
+    }
+
+    /**
+     * @dev Retrieves proposal details
+     * @param proposalId Proposal identifier
+     * @return proposer Address of proposal creator
+     * @return instructionType Type of proposal instruction
+     * @return status Current proposal status
+     * @return createdAt Timestamp of proposal creation
+     * @return expiresAt Timestamp when proposal expires
+     * @return description Proposal description
+     * @return approverCount Number of approvers
+     * @return rejectorCount Number of rejectors
+     * @return requiredApprovals Minimum approvals needed
+     */
+    function getProposalDetails(uint256 proposalId) 
         external 
         view 
         returns (
-            ProposalInstruction memory,
-            ProposalStatus,
-            uint256,
-            uint256,
-            string memory,
-            address,
-            uint8
+            address proposer,
+            InstructionType instructionType,
+            ProposalStatus status,
+            uint256 createdAt,
+            uint256 expiresAt,
+            string memory description,
+            uint256 approverCount,
+            uint256 rejectorCount,
+            uint256 requiredApprovals
         ) 
     {
         Proposal storage proposal = proposals[proposalId];
-        require(proposal.createdAt > 0, "EducProposal: proposal does not exist");
         
         return (
-            proposal.instruction,
+            proposal.proposer,
+            proposal.instructionType,
             proposal.status,
             proposal.createdAt,
-            proposal.closedAt,
+            proposal.expiresAt,
             proposal.description,
-            proposal.proposer,
-            proposal.approvalCount
+            proposal.approvers.length,
+            proposal.rejectors.length,
+            proposal.requiredApprovals
         );
-    }
-    
-    /**
-     * @dev Checks if a proposal has been approved by a specific signer
-     * @param proposalId ID of the proposal
-     * @param signer Address of the signer to check
-     * @return bool True if the signer has approved the proposal
-     */
-    function hasApproved(uint256 proposalId, address signer) 
-        external 
-        view 
-        returns (bool) 
-    {
-        return proposals[proposalId].approvals[signer];
-    }
-    
-    /**
-     * @dev Execute a proposal instruction
-     * @param instruction The instruction to execute
-     */
-    function executeInstruction(ProposalInstruction memory instruction) private {
-        if (instruction.instructionType == InstructionType.ChangeAuthority) {
-            address newAuthority = abi.decode(instruction.data, (address));
-            // Implementation depends on the target contracts
-        } else if (instruction.instructionType == InstructionType.TogglePause) {
-            bool pauseState = abi.decode(instruction.data, (bool));
-            // Implementation depends on the target contracts
-        } else if (instruction.instructionType == InstructionType.RegisterEducator) {
-            (address educator, uint256 mintLimit) = abi.decode(instruction.data, (address, uint256));
-            // Implementation depends on the target contracts
-        } else if (instruction.instructionType == InstructionType.UpdateEducatorStatus) {
-            (address educator, bool isActive, uint256 mintLimit) = abi.decode(instruction.data, (address, bool, uint256));
-            // Implementation depends on the target contracts
-        } else if (instruction.instructionType == InstructionType.AddSigner) {
-            address newSigner = abi.decode(instruction.data, (address));
-            multisig.addSigner(newSigner);
-        } else if (instruction.instructionType == InstructionType.RemoveSigner) {
-            address signerToRemove = abi.decode(instruction.data, (address));
-            multisig.removeSigner(signerToRemove);
-        } else if (instruction.instructionType == InstructionType.ChangeThreshold) {
-            uint8 newThreshold = abi.decode(instruction.data, (uint8));
-            multisig.changeThreshold(newThreshold);
-        }
     }
 }

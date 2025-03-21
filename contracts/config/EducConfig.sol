@@ -7,95 +7,153 @@ import "../access/EducRoles.sol";
 
 /**
  * @title EducConfig
- * @dev Configuration settings for the EducLearning ecosystem
+ * @dev Advanced configuration management for the educational ecosystem
  */
 contract EducConfig is AccessControl, Pausable {
-    // Role definitions
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    // Configuration parameters with enhanced tracking
+    struct SystemConfig {
+        uint16 maxEducators;
+        uint16 maxCoursesPerEducator;
+        uint256 maxMintAmount;
+        uint256 mintCooldownPeriod;
+        uint256 lastUpdatedAt;
+        address configManager;
+    }
 
-    // Configuration parameters
-    uint16 public maxEducators;
-    uint16 public maxCoursesPerEducator;
-    uint256 public maxMintAmount;
-    uint256 public mintCooldownPeriod;
-    uint256 public lastUpdatedAt;
+    // Current system configuration
+    SystemConfig public currentConfig;
 
-    // Events
+    // Constraints
+    uint16 public constant MAX_EDUCATORS_LIMIT = 1000;
+    uint16 public constant MAX_COURSES_LIMIT = 500;
+    uint256 public constant MAX_MINT_LIMIT = 1_000_000 * 10**18;
+    uint256 public constant MAX_COOLDOWN_PERIOD = 30 days;
+
+    // Events with detailed logging
     event ConfigUpdated(
         address indexed authority,
-        uint256 timestamp
+        uint256 timestamp,
+        string updateType
+    );
+
+    event ConfigParameterChanged(
+        string parameterName,
+        uint256 oldValue,
+        uint256 newValue,
+        address indexed updatedBy
     );
 
     /**
-     * @dev Initializes the configuration contract
-     * @param admin The address that will be granted the admin role
+     * @dev Constructor initializes default configuration
+     * @param admin Primary administrator address
      */
     constructor(address admin) {
-        require(admin != address(0), "EducConfig: admin cannot be zero address");
+        require(admin != address(0), "EducConfig: Invalid admin address");
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(ADMIN_ROLE, admin);
+        _grantRole(EducRoles.ADMIN_ROLE, admin);
 
-        // Set default values
-        maxEducators = 1000;
-        maxCoursesPerEducator = 100;
-        maxMintAmount = 1000 * 10**18; // 1,000 tokens
-        mintCooldownPeriod = 2 hours;
-        lastUpdatedAt = block.timestamp;
+        // Initialize default configuration
+        currentConfig = SystemConfig({
+            maxEducators: 1000,
+            maxCoursesPerEducator: 100,
+            maxMintAmount: 1000 * 10**18,
+            mintCooldownPeriod: 2 hours,
+            lastUpdatedAt: block.timestamp,
+            configManager: admin
+        });
     }
 
     /**
-     * @dev Updates the configuration parameters
-     * @param _maxEducators Maximum number of educators (0 to keep current)
-     * @param _maxCoursesPerEducator Maximum courses per educator (0 to keep current)
-     * @param _maxMintAmount Maximum mint amount per transaction (0 to keep current)
-     * @param _mintCooldownPeriod Cooldown period between mints (0 to keep current)
+     * @dev Updates configuration parameters with comprehensive validation
      */
     function updateConfig(
         uint16 _maxEducators,
         uint16 _maxCoursesPerEducator,
         uint256 _maxMintAmount,
         uint256 _mintCooldownPeriod
-    ) external onlyRole(ADMIN_ROLE) {
-        bool updated = false;
+    ) 
+        external 
+        onlyRole(EducRoles.ADMIN_ROLE)
+    {
+        require(
+            _maxEducators <= MAX_EDUCATORS_LIMIT && 
+            _maxCoursesPerEducator <= MAX_COURSES_LIMIT &&
+            _maxMintAmount <= MAX_MINT_LIMIT &&
+            _mintCooldownPeriod <= MAX_COOLDOWN_PERIOD,
+            "EducConfig: Invalid parameter values"
+        );
 
-        if (_maxEducators > 0) {
-            maxEducators = _maxEducators;
-            updated = true;
+        SystemConfig memory oldConfig = currentConfig;
+        bool configChanged = false;
+
+        if (_maxEducators > 0 && _maxEducators != oldConfig.maxEducators) {
+            currentConfig.maxEducators = _maxEducators;
+            emit ConfigParameterChanged(
+                "maxEducators", 
+                oldConfig.maxEducators, 
+                _maxEducators, 
+                msg.sender
+            );
+            configChanged = true;
         }
 
-        if (_maxCoursesPerEducator > 0) {
-            maxCoursesPerEducator = _maxCoursesPerEducator;
-            updated = true;
+        if (_maxCoursesPerEducator > 0 && _maxCoursesPerEducator != oldConfig.maxCoursesPerEducator) {
+            currentConfig.maxCoursesPerEducator = _maxCoursesPerEducator;
+            emit ConfigParameterChanged(
+                "maxCoursesPerEducator", 
+                oldConfig.maxCoursesPerEducator, 
+                _maxCoursesPerEducator, 
+                msg.sender
+            );
+            configChanged = true;
         }
 
-        if (_maxMintAmount > 0) {
-            maxMintAmount = _maxMintAmount;
-            updated = true;
+        if (_maxMintAmount > 0 && _maxMintAmount != oldConfig.maxMintAmount) {
+            currentConfig.maxMintAmount = _maxMintAmount;
+            emit ConfigParameterChanged(
+                "maxMintAmount", 
+                oldConfig.maxMintAmount, 
+                _maxMintAmount, 
+                msg.sender
+            );
+            configChanged = true;
         }
 
-        if (_mintCooldownPeriod > 0) {
-            mintCooldownPeriod = _mintCooldownPeriod;
-            updated = true;
+        if (_mintCooldownPeriod > 0 && _mintCooldownPeriod != oldConfig.mintCooldownPeriod) {
+            currentConfig.mintCooldownPeriod = _mintCooldownPeriod;
+            emit ConfigParameterChanged(
+                "mintCooldownPeriod", 
+                oldConfig.mintCooldownPeriod, 
+                _mintCooldownPeriod, 
+                msg.sender
+            );
+            configChanged = true;
         }
 
-        if (updated) {
-            lastUpdatedAt = block.timestamp;
-            emit ConfigUpdated(msg.sender, block.timestamp);
+        if (configChanged) {
+            currentConfig.lastUpdatedAt = block.timestamp;
+            currentConfig.configManager = msg.sender;
+
+            emit ConfigUpdated(
+                msg.sender, 
+                block.timestamp, 
+                "SystemConfigUpdate"
+            );
         }
     }
 
     /**
-     * @dev Pauses the configuration updates
+     * @dev Pauses configuration updates
      */
-    function pause() external onlyRole(ADMIN_ROLE) {
+    function pause() external onlyRole(EducRoles.ADMIN_ROLE) {
         _pause();
     }
 
     /**
-     * @dev Unpauses the configuration updates
+     * @dev Unpauses configuration updates
      */
-    function unpause() external onlyRole(ADMIN_ROLE) {
+    function unpause() external onlyRole(EducRoles.ADMIN_ROLE) {
         _unpause();
     }
 }

@@ -7,6 +7,10 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   console.log(`Deploying contracts with the account: ${deployer.address}`);
 
+  // Define initial signers and threshold
+  const signers = [deployer.address];
+  const MULTISIG_THRESHOLD = signers.length; // Threshold equal to number of signers
+
   // Deploy EducToken
   console.log("Deploying EducToken...");
   const EducToken = await ethers.getContractFactory("EducToken");
@@ -49,11 +53,14 @@ async function main() {
   await pauseControl.deploymentTransaction().wait();
   console.log(`EducPause deployed to: ${pauseControl.target}`);
 
-  // Deploy Multisig
+  // Deploy Multisig with correct threshold
   console.log("Deploying EducMultisig...");
   const EducMultisig = await ethers.getContractFactory("EducMultisig");
-  const signers = [deployer.address];
-  const multisig = await EducMultisig.deploy(signers, 1, deployer.address);
+  const multisig = await EducMultisig.deploy(
+    signers,             // Initial signers
+    MULTISIG_THRESHOLD,  // Threshold for approvals
+    deployer.address     // Admin address
+  );
   await multisig.deploymentTransaction().wait();
   console.log(`EducMultisig deployed to: ${multisig.target}`);
 

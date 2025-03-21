@@ -73,14 +73,14 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
      * @param amount The amount of tokens to mint
      */
     function mint(address to, uint256 amount) external override onlyMinter whenNotPaused nonReentrant {
-        require(to != address(0), "EducToken: mint to the zero address");
-        require(amount > 0, "EducToken: mint amount must be positive");
-        require(amount <= MAX_MINT_AMOUNT, "EducToken: amount exceeds max mint amount");
+    require(to != address(0), "EducToken: mint to the zero address");
+    require(amount > 0, "EducToken: mint amount must be positive");
+    require(amount <= MAX_MINT_AMOUNT, "EducToken: amount exceeds max mint amount");
 
-        _mint(to, amount);
-        totalMinted += amount;
+    _mint(to, amount);
+    totalMinted += amount;
 
-        emit TokensMinted(to, amount, msg.sender);
+    emit TokensMinted(to, amount, msg.sender);
     }
 
     /**

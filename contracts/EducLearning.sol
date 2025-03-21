@@ -17,10 +17,10 @@ import "./access/EducRoles.sol";
 
 /**
  * @title EducLearning
- * @dev Main contract that integrates all components of the EducLearning system
+ * @dev Comprehensive integration contract for the educational ecosystem
  */
 contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable {
-    // References to other contracts
+    // Contract references
     EducToken public token;
     EducEducator public educator;
     EducStudent public student;
@@ -30,8 +30,8 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
     EducMultisig public multisig;
     EducProposal public proposal;
 
-    // Events
-    event ContractsInitialized(
+    // Enhanced events
+    event SystemInitialized(
         address token,
         address educator,
         address student,
@@ -43,7 +43,7 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
         uint256 timestamp
     );
 
-    event CourseCompleted(
+    event CourseCompletionProcessed(
         address indexed student,
         string courseId,
         address indexed educator,
@@ -52,11 +52,11 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
     );
 
     /**
-     * @dev Constructor
-     * @param admin The address that will be granted the admin role
+     * @dev Constructor sets up initial roles
+     * @param admin Primary administrator address
      */
     constructor(address admin) {
-        require(admin != address(0), "EducLearning: admin cannot be zero address");
+        require(admin != address(0), "EducLearning: Invalid admin address");
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(EducRoles.ADMIN_ROLE, admin);
@@ -66,14 +66,6 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
 
     /**
      * @dev Initializes the system with contract addresses
-     * @param _token Token contract address
-     * @param _educator Educator contract address
-     * @param _student Student contract address
-     * @param _course Course contract address
-     * @param _config Configuration contract address
-     * @param _pauseControl Pause control contract address
-     * @param _multisig Multisig contract address
-     * @param _proposal Proposal contract address
      */
     function initialize(
         address _token,
@@ -89,15 +81,17 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
         initializer 
         onlyRole(EducRoles.ADMIN_ROLE) 
     {
-        require(_token != address(0), "EducLearning: token address cannot be zero");
-        require(_educator != address(0), "EducLearning: educator address cannot be zero");
-        require(_student != address(0), "EducLearning: student address cannot be zero");
-        require(_course != address(0), "EducLearning: course address cannot be zero");
-        require(_config != address(0), "EducLearning: config address cannot be zero");
-        require(_pauseControl != address(0), "EducLearning: pause control address cannot be zero");
-        require(_multisig != address(0), "EducLearning: multisig address cannot be zero");
-        require(_proposal != address(0), "EducLearning: proposal address cannot be zero");
+        // Comprehensive address validation
+        require(_token != address(0), "EducLearning: Token address invalid");
+        require(_educator != address(0), "EducLearning: Educator address invalid");
+        require(_student != address(0), "EducLearning: Student address invalid");
+        require(_course != address(0), "EducLearning: Course address invalid");
+        require(_config != address(0), "EducLearning: Config address invalid");
+        require(_pauseControl != address(0), "EducLearning: Pause control address invalid");
+        require(_multisig != address(0), "EducLearning: Multisig address invalid");
+        require(_proposal != address(0), "EducLearning: Proposal address invalid");
 
+        // Initialize contract references
         token = EducToken(_token);
         educator = EducEducator(_educator);
         student = EducStudent(_student);
@@ -107,7 +101,7 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
         multisig = EducMultisig(_multisig);
         proposal = EducProposal(_proposal);
 
-        emit ContractsInitialized(
+        emit SystemInitialized(
             _token,
             _educator,
             _student,
@@ -121,9 +115,7 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
     }
 
     /**
-     * @dev Completes a course for a student and mints reward tokens
-     * @param studentAddress Address of the student completing the course
-     * @param courseId ID of the completed course
+     * @dev Processes course completion with comprehensive validation
      */
     function completeCourse(
         address studentAddress,
@@ -133,31 +125,23 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
         whenNotPaused 
         nonReentrant 
     {
-        // Verify educator is active
-        require(educator.isActiveEducator(msg.sender), "EducLearning: caller is not an active educator");
-        
-        // Verify course exists and is active
-        require(course.isCourseActive(msg.sender, courseId), "EducLearning: course not found or inactive");
-        
-        // Verify course is not already completed by the student
-        require(!student.hasCourseCompletion(studentAddress, courseId), "EducLearning: course already completed");
-        
-        // Get course reward amount
+        // Comprehensive validation
+        require(educator.isActiveEducator(msg.sender), "EducLearning: Caller not an active educator");
+        require(course.isCourseActive(msg.sender, courseId), "EducLearning: Course not active");
+        require(!student.hasCourseCompletion(studentAddress, courseId), "EducLearning: Course already completed");
+
+        // Get course reward
         uint256 rewardAmount = course.getCourseReward(msg.sender, courseId);
         
-        // Record course completion in student contract
+        // Record course completion
         student.recordCourseCompletion(studentAddress, courseId, rewardAmount);
-        
-        // Increment course completion count
         course.incrementCompletionCount(msg.sender, courseId);
-        
-        // Record mint in educator contract
         educator.recordMint(msg.sender, rewardAmount);
-        
-        // Mint tokens to student
+
+        // Mint tokens
         token.mint(studentAddress, rewardAmount);
-        
-        emit CourseCompleted(
+
+        emit CourseCompletionProcessed(
             studentAddress,
             courseId,
             msg.sender,
@@ -167,14 +151,14 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
     }
 
     /**
-     * @dev Pauses the system
+     * @dev Pauses entire system
      */
     function pause() external onlyRole(EducRoles.PAUSER_ROLE) {
         _pause();
     }
 
     /**
-     * @dev Unpauses the system
+     * @dev Unpauses entire system
      */
     function unpause() external onlyRole(EducRoles.PAUSER_ROLE) {
         _unpause();

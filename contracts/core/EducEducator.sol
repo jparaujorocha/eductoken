@@ -12,9 +12,6 @@ import "../interfaces/IEducEducator.sol";
  * @dev Manages educator accounts and permissions in the EducLearning system
  */
 contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator {
-    // Role definitions
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-
     // Educator structure
     struct Educator {
         address educatorAddress;
@@ -58,7 +55,7 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
         require(admin != address(0), "EducEducator: admin cannot be zero address");
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(ADMIN_ROLE, admin);
+        _grantRole(EducRoles.ADMIN_ROLE, admin);
         
         totalEducators = 0;
     }
@@ -71,7 +68,7 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
     function registerEducator(address educator, uint256 mintLimit) 
         external 
         override 
-        onlyRole(ADMIN_ROLE) 
+        onlyRole(EducRoles.ADMIN_ROLE) 
         whenNotPaused 
         nonReentrant 
     {
@@ -117,7 +114,7 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
     ) 
         external 
         override 
-        onlyRole(ADMIN_ROLE) 
+        onlyRole(EducRoles.ADMIN_ROLE) 
         nonReentrant 
     {
         require(educators[educator].educatorAddress != address(0), "EducEducator: educator does not exist");
@@ -147,7 +144,7 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
      * @param amount Amount that was minted
      */
     function recordMint(address educator, uint256 amount) external override nonReentrant {
-        require(hasRole(ADMIN_ROLE, msg.sender), "EducEducator: caller is not admin");
+        require(hasRole(EducRoles.ADMIN_ROLE, msg.sender), "EducEducator: caller is not admin");
         require(educators[educator].educatorAddress != address(0), "EducEducator: educator does not exist");
         require(educators[educator].isActive, "EducEducator: educator is not active");
 
@@ -161,7 +158,7 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
      * @param educator Address of the educator
      */
     function incrementCourseCount(address educator) external override nonReentrant {
-        require(hasRole(ADMIN_ROLE, msg.sender), "EducEducator: caller is not admin");
+        require(hasRole(EducRoles.ADMIN_ROLE, msg.sender), "EducEducator: caller is not admin");
         require(educators[educator].educatorAddress != address(0), "EducEducator: educator does not exist");
         
         Educator storage educatorData = educators[educator];
@@ -203,14 +200,14 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
     /**
      * @dev Pauses educator management functions
      */
-    function pause() external onlyRole(ADMIN_ROLE) {
+    function pause() external onlyRole(EducRoles.ADMIN_ROLE) {
         _pause();
     }
 
     /**
      * @dev Unpauses educator management functions
      */
-    function unpause() external onlyRole(ADMIN_ROLE) {
+    function unpause() external onlyRole(EducRoles.ADMIN_ROLE) {
         _unpause();
     }
 }

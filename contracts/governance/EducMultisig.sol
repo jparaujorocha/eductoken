@@ -7,28 +7,23 @@ import "../access/EducRoles.sol";
 
 /**
  * @title EducMultisig
- * @dev Implements a multi-signature governance mechanism
+ * @dev Advanced multi-signature governance mechanism with comprehensive validation
  */
 contract EducMultisig is AccessControl, ReentrancyGuard {
-    // Constants
+    // Multisig configuration constraints
     uint8 public constant MAX_SIGNERS = 10;
+    uint8 public constant MIN_SIGNERS = 1;
     
-    // State variables
+    // Multisig state tracking
     address[] public signers;
     uint8 public threshold;
     uint256 public proposalCount;
     address public authority;
     
-    /**
-     * @dev 
-     * @return uint256
-     */
-    function incrementProposalCount() external onlyRole(EducRoles.ADMIN_ROLE) returns (uint256) {
-        proposalCount++;
-        return proposalCount;
-    }
-
-    // Events
+    // Signer management tracking
+    mapping(address => bool) public isSigner;
+    
+    // Events with comprehensive logging
     event MultisigCreated(
         address indexed multisig,
         address[] signers,
@@ -51,42 +46,53 @@ contract EducMultisig is AccessControl, ReentrancyGuard {
         uint8 newThreshold,
         uint256 timestamp
     );
-    
+
     /**
-     * @dev Constructor that sets up the multisig configuration
-     * @param _signers Array of signer addresses
-     * @param _threshold Minimum number of approvals needed
-     * @param admin Admin address
+     * @dev Constructor sets up multisig configuration with robust validation
+     * @param _signers Initial set of signers
+     * @param _threshold Minimum approvals required
+     * @param admin Administrator address
      */
     constructor(
         address[] memory _signers,
         uint8 _threshold,
         address admin
     ) {
-        require(_signers.length > 0, "EducMultisig: no signers provided");
-        require(_signers.length <= MAX_SIGNERS, "EducMultisig: too many signers");
-        require(_threshold > 0 && _threshold <= _signers.length, "EducMultisig: invalid threshold");
-        require(admin != address(0), "EducMultisig: admin cannot be zero address");
+        // Validate input parameters
+        require(admin != address(0), "EducMultisig: Invalid admin");
+        require(_signers.length >= MIN_SIGNERS, "EducMultisig: Insufficient signers");
+        require(_signers.length <= MAX_SIGNERS, "EducMultisig: Too many signers");
         
+        // Validate threshold
+        require(
+            _threshold >= 1 && 
+            _threshold <= _signers.length, 
+            "EducMultisig: Invalid threshold"
+        );
+
+        // Grant roles and validate signers
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(EducRoles.ADMIN_ROLE, admin);
         
-        // Check for duplicates and zero addresses
+        // Validate and add unique signers
         for (uint256 i = 0; i < _signers.length; i++) {
-            require(_signers[i] != address(0), "EducMultisig: signer cannot be zero address");
+            require(_signers[i] != address(0), "EducMultisig: Invalid signer address");
             
+            // Check for duplicate signers
             for (uint256 j = i + 1; j < _signers.length; j++) {
-                require(_signers[i] != _signers[j], "EducMultisig: duplicate signer");
+                require(_signers[i] != _signers[j], "EducMultisig: Duplicate signer");
             }
             
             signers.push(_signers[i]);
+            isSigner[_signers[i]] = true;
             _grantRole(EducRoles.ADMIN_ROLE, _signers[i]);
         }
         
+        // Set core configuration
         threshold = _threshold;
         authority = admin;
         proposalCount = 0;
-        
+
         emit MultisigCreated(
             address(this),
             _signers,
@@ -94,105 +100,125 @@ contract EducMultisig is AccessControl, ReentrancyGuard {
             block.timestamp
         );
     }
-    
+
     /**
-     * @dev Adds a new signer to the multisig
-     * @param newSigner Address of the signer to add
+     * @dev Adds a new signer with comprehensive validation
+     * @param newSigner Address of the new signer
      */
-    function addSigner(address newSigner) external onlyRole(EducRoles.ADMIN_ROLE) nonReentrant {
-        require(newSigner != address(0), "EducMultisig: signer cannot be zero address");
-        require(signers.length < MAX_SIGNERS, "EducMultisig: max signers reached");
-        
-        // Check for duplicates
-        for (uint256 i = 0; i < signers.length; i++) {
-            require(signers[i] != newSigner, "EducMultisig: signer already exists");
-        }
-        
+    function addSigner(address newSigner) 
+        external 
+        onlyRole(EducRoles.ADMIN_ROLE) 
+        nonReentrant
+    {
+        require(newSigner != address(0), "EducMultisig: Invalid signer");
+        require(!isSigner[newSigner], "EducMultisig: Signer already exists");
+        require(signers.length < MAX_SIGNERS, "EducMultisig: Max signers reached");
+
         signers.push(newSigner);
+        isSigner[newSigner] = true;
         _grantRole(EducRoles.ADMIN_ROLE, newSigner);
-        
-        emit SignerAdded(newSigner, block.timestamp);
-    }
-    
-    /**
-     * @dev Removes a signer from the multisig
-     * @param signerToRemove Address of the signer to remove
-     */
-    function removeSigner(address signerToRemove) external onlyRole(EducRoles.ADMIN_ROLE) nonReentrant {
-        require(signers.length > threshold, "EducMultisig: cannot remove signer when threshold cannot be met");
-        
-        bool found = false;
-        uint256 signerIndex = 0;
-        
-        // Find the signer
-        for (uint256 i = 0; i < signers.length; i++) {
-            if (signers[i] == signerToRemove) {
-                found = true;
-                signerIndex = i;
-                break;
-            }
-        }
-        
-        require(found, "EducMultisig: signer does not exist");
-        
-        // Remove by swapping with the last element and popping
-        signers[signerIndex] = signers[signers.length - 1];
-        signers.pop();
-        
-        _revokeRole(EducRoles.ADMIN_ROLE, signerToRemove);
-        
-        // Adjust threshold if needed
+
+        // Adjust threshold if necessary
         if (threshold > signers.length) {
             uint8 oldThreshold = threshold;
             threshold = uint8(signers.length);
             
-            emit ThresholdChanged(oldThreshold, threshold, block.timestamp);
+            emit ThresholdChanged(
+                oldThreshold, 
+                threshold, 
+                block.timestamp
+            );
         }
-        
-        emit SignerRemoved(signerToRemove, block.timestamp);
+
+        emit SignerAdded(newSigner, block.timestamp);
     }
-    
+
     /**
-     * @dev Changes the threshold for approvals
-     * @param newThreshold New threshold value
+     * @dev Removes a signer with threshold protection
+     * @param signerToRemove Address of the signer to remove
      */
-    function changeThreshold(uint8 newThreshold) external onlyRole(EducRoles.ADMIN_ROLE) nonReentrant {
-        require(newThreshold > 0, "EducMultisig: threshold must be positive");
-        require(newThreshold <= signers.length, "EducMultisig: threshold cannot exceed signer count");
-        
-        uint8 oldThreshold = threshold;
-        threshold = newThreshold;
-        
-        emit ThresholdChanged(oldThreshold, newThreshold, block.timestamp);
-    }
-    
-    /**
-     * @dev Checks if an address is a signer
-     * @param account Address to check
-     * @return bool True if the address is a signer
-     */
-    function isSigner(address account) external view returns (bool) {
+    function removeSigner(address signerToRemove) 
+        external 
+        onlyRole(EducRoles.ADMIN_ROLE) 
+        nonReentrant
+    {
+        require(isSigner[signerToRemove], "EducMultisig: Signer not found");
+        require(signers.length > threshold, "EducMultisig: Cannot remove signer");
+
+        // Remove signer
         for (uint256 i = 0; i < signers.length; i++) {
-            if (signers[i] == account) {
-                return true;
+            if (signers[i] == signerToRemove) {
+                signers[i] = signers[signers.length - 1];
+                signers.pop();
+                break;
             }
         }
-        return false;
+
+        isSigner[signerToRemove] = false;
+        _revokeRole(EducRoles.ADMIN_ROLE, signerToRemove);
+
+        emit SignerRemoved(signerToRemove, block.timestamp);
     }
-    
+
     /**
-     * @dev Gets all current signers
-     * @return address[] Array of signer addresses
+     * @dev Changes the approval threshold
+     * @param newThreshold New threshold value
      */
-    function getSigners() external view returns (address[] memory) {
+    function changeThreshold(uint8 newThreshold) 
+        external 
+        onlyRole(EducRoles.ADMIN_ROLE) 
+        nonReentrant
+    {
+        require(
+            newThreshold >= 1 && 
+            newThreshold <= signers.length, 
+            "EducMultisig: Invalid threshold"
+        );
+
+        uint8 oldThreshold = threshold;
+        threshold = newThreshold;
+
+        emit ThresholdChanged(
+            oldThreshold, 
+            newThreshold, 
+            block.timestamp
+        );
+    }
+
+    /**
+     * @dev Increments proposal counter
+     * @return Current proposal count
+     */
+    function incrementProposalCount() 
+        external 
+        onlyRole(EducRoles.ADMIN_ROLE) 
+        returns (uint256) 
+    {
+        proposalCount++;
+        return proposalCount;
+    }
+
+    /**
+     * @dev Retrieves current signers
+     * @return Array of current signers
+     */
+    function getSigners() 
+        external 
+        view 
+        returns (address[] memory) 
+    {
         return signers;
     }
-    
+
     /**
      * @dev Gets the current number of signers
-     * @return uint256 Number of signers
+     * @return Number of signers
      */
-    function getSignerCount() external view returns (uint256) {
+    function getSignerCount() 
+        external 
+        view 
+        returns (uint256) 
+    {
         return signers.length;
     }
 }

@@ -3,8 +3,8 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../access/EducRoles.sol";
 import "../interfaces/IEducToken.sol";
 
@@ -45,9 +45,9 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
     constructor(address admin) ERC20("EducToken", "EDUC") {
         require(admin != address(0), "EducToken: admin cannot be zero address");
 
-        _setupRole(DEFAULT_ADMIN_ROLE, admin);
-        _setupRole(ADMIN_ROLE, admin);
-        _setupRole(MINTER_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(ADMIN_ROLE, admin);
+        _grantRole(MINTER_ROLE, admin);
 
         _mint(admin, INITIAL_SUPPLY);
         totalMinted = INITIAL_SUPPLY;

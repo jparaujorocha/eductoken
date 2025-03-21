@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "../access/EducRoles.sol";
 
 /**
@@ -41,9 +41,10 @@ contract EducPause is AccessControl, Pausable {
     constructor(address admin) {
         require(admin != address(0), "EducPause: admin cannot be zero address");
 
-        _setupRole(DEFAULT_ADMIN_ROLE, admin);
-        _setupRole(EducRoles.ADMIN_ROLE, admin);
-        _setupRole(EducRoles.EMERGENCY_ROLE, admin);
+
+    _grantRole(DEFAULT_ADMIN_ROLE, admin);
+    _grantRole(EducRoles.ADMIN_ROLE, admin);
+    _grantRole(EducRoles.EMERGENCY_ROLE, admin);
 
         pauseFlags = 0; // No functions paused initially
     }

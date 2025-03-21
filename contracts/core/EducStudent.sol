@@ -2,8 +2,8 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../access/EducRoles.sol";
 import "../interfaces/IEducStudent.sol";
 
@@ -59,8 +59,8 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
     constructor(address admin) {
         require(admin != address(0), "EducStudent: admin cannot be zero address");
 
-        _setupRole(DEFAULT_ADMIN_ROLE, admin);
-        _setupRole(ADMIN_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(ADMIN_ROLE, admin);
     }
 
     /**

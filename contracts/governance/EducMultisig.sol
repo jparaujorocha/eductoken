@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../access/EducRoles.sol";
 
 /**
@@ -19,6 +19,15 @@ contract EducMultisig is AccessControl, ReentrancyGuard {
     uint256 public proposalCount;
     address public authority;
     
+    /**
+     * @dev 
+     * @return uint256
+     */
+    function incrementProposalCount() external onlyRole(EducRoles.ADMIN_ROLE) returns (uint256) {
+        proposalCount++;
+        return proposalCount;
+    }
+
     // Events
     event MultisigCreated(
         address indexed multisig,
@@ -59,8 +68,8 @@ contract EducMultisig is AccessControl, ReentrancyGuard {
         require(_threshold > 0 && _threshold <= _signers.length, "EducMultisig: invalid threshold");
         require(admin != address(0), "EducMultisig: admin cannot be zero address");
         
-        _setupRole(DEFAULT_ADMIN_ROLE, admin);
-        _setupRole(EducRoles.ADMIN_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(EducRoles.ADMIN_ROLE, admin);
         
         // Check for duplicates and zero addresses
         for (uint256 i = 0; i < _signers.length; i++) {

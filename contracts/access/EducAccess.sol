@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./EducRoles.sol";
 
 /**
@@ -10,9 +10,6 @@ import "./EducRoles.sol";
  * @dev Manages role-based access control for the EducLearning system
  */
 contract EducAccess is AccessControl, Pausable {
-    event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender);
-    event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender);
-
     /**
      * @dev Constructor that sets up the admin role
      * @param admin The address that will be granted the admin role
@@ -20,11 +17,11 @@ contract EducAccess is AccessControl, Pausable {
     constructor(address admin) {
         require(admin != address(0), "EducAccess: admin cannot be zero address");
 
-        _setupRole(DEFAULT_ADMIN_ROLE, admin);
-        _setupRole(EducRoles.ADMIN_ROLE, admin);
-        _setupRole(EducRoles.PAUSER_ROLE, admin);
-        _setupRole(EducRoles.UPGRADER_ROLE, admin);
-        _setupRole(EducRoles.EMERGENCY_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(EducRoles.ADMIN_ROLE, admin);
+        _grantRole(EducRoles.PAUSER_ROLE, admin);
+        _grantRole(EducRoles.UPGRADER_ROLE, admin);
+        _grantRole(EducRoles.EMERGENCY_ROLE, admin);
     }
 
     /**

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/access/AccessControl.sol";
-
 /**
  * @title EducRoles
  * @dev Defines role constants for the EducLearning system
  */
-contract EducRoles {
+library EducRoles {
     // Role definitions
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant EDUCATOR_ROLE = keccak256("EDUCATOR_ROLE");

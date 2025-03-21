@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../access/EducRoles.sol";
 import "./EducMultisig.sol";
 
@@ -96,8 +96,8 @@ contract EducProposal is AccessControl, ReentrancyGuard {
         
         multisig = EducMultisig(multisigAddress);
         
-        _setupRole(DEFAULT_ADMIN_ROLE, admin);
-        _setupRole(EducRoles.ADMIN_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(EducRoles.ADMIN_ROLE, admin);
     }
     
     /**

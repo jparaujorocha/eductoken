@@ -15,11 +15,12 @@ import "./config/EducConfig.sol";
 import "./security/pause/EducPause.sol";
 import "./governance/multisig/EducMultisig.sol";
 import "./governance/proposal/EducProposal.sol";
+import "./interfaces/IEducLearning.sol";
 /**
  * @title EducLearning
  * @dev Comprehensive integration contract for the educational ecosystem with enhanced reward system
  */
-contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable {
+contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable, IEducLearning {
     // Contract references
     EducToken public token;
     EducEducator public educator;

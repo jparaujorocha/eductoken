@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "../access/roles/EducRoles.sol";
 import "../interfaces/IEducToken.sol";
+import "./interfaces/IUpgradeable.sol";
 import "../interfaces/IEducStudent.sol";
 import "../config/constants/SystemConstants.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";

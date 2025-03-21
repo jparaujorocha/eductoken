@@ -15,7 +15,7 @@ import "contracts/governance/multisig/EducMultisig.sol";
  * @title EducProposal
  * @dev Advanced governance proposal management system
  */
-contract EducProposal is AccessControl, ReentrancyGuard {
+contract EducProposal is AccessControl, ReentrancyGuard, IEducProposal {
     // Constants
     uint256 public constant MAX_DESCRIPTION_LENGTH = 500;
     uint256 public constant PROPOSAL_EXPIRATION_TIME = 7 days;
@@ -143,7 +143,7 @@ contract EducProposal is AccessControl, ReentrancyGuard {
     {
         ProposalTypes.Proposal storage proposal = proposals[params.proposalId];
         
-        _validateProposalApproval(proposal, params.proposalId);
+        _validateProposalApproval(proposal);
 
         proposal.approvers.push(msg.sender);
 
@@ -158,11 +158,9 @@ contract EducProposal is AccessControl, ReentrancyGuard {
     /**
      * @dev Validates proposal approval
      * @param proposal The proposal being approved
-     * @param proposalId ID of the proposal
      */
     function _validateProposalApproval(
-        ProposalTypes.Proposal storage proposal, 
-        uint256 proposalId
+        ProposalTypes.Proposal storage proposal
     ) private view {
         require(
             multisig.isSigner(msg.sender), 

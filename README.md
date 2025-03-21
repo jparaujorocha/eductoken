@@ -82,6 +82,100 @@ This project implements a complete token-based educational reward system on Ethe
 - **EducVestingFactory**: Factory for deploying multiple vesting contracts
 - **EducEmergencyRecovery**: Emergency response system for critical issues
 
+## Project Structure
+
+```
+eductoken/
+├── contracts/
+│   ├── access/
+│   │   ├── EducAccess.sol
+│   │   └── roles/
+│   │       └── EducRoles.sol
+│   ├── config/
+│   │   ├── EducConfig.sol
+│   │   └── constants/
+│   │       └── SystemConstants.sol
+│   ├── core/
+│   │   ├── token/
+│   │   │   ├── EducToken.sol
+│   │   │   ├── EducTokenWithRecovery.sol
+│   │   │   ├── TokenEvents.sol
+│   │   │   └── types/
+│   │   │       └── TokenTypes.sol
+│   │   ├── educator/
+│   │   │   ├── EducEducator.sol
+│   │   │   ├── EducatorEvents.sol
+│   │   │   └── types/
+│   │   │       └── EducatorTypes.sol
+│   │   ├── student/
+│   │   │   ├── EducStudent.sol
+│   │   │   ├── StudentEvents.sol
+│   │   │   └── types/
+│   │   │       └── StudentTypes.sol
+│   │   └── course/
+│   │       ├── EducCourse.sol
+│   │       ├── CourseEvents.sol
+│   │       └── types/
+│   │           └── CourseTypes.sol
+│   ├── governance/
+│   │   ├── multisig/
+│   │   │   ├── EducMultisig.sol
+│   │   │   └── MultisigEvents.sol
+│   │   └── proposal/
+│   │       ├── EducProposal.sol
+│   │       ├── ProposalEvents.sol
+│   │       └── types/
+│   │           └── ProposalTypes.sol
+│   ├── interfaces/
+│   │   ├── IEducToken.sol
+│   │   ├── IEducStudent.sol
+│   │   ├── IEducEducator.sol
+│   │   ├── IEducCourse.sol
+│   │   └── ... (other interfaces)
+│   ├── proxy/
+│   │   ├── EducTokenUpgradeable.sol
+│   │   └── interfaces/
+│   │       └── IUpgradeable.sol
+│   ├── security/
+│   │   ├── emergency/
+│   │   │   ├── EducEmergencyEnabled.sol
+│   │   │   ├── EducEmergencyRecovery.sol
+│   │   │   ├── EmergencyEvents.sol
+│   │   │   └── types/
+│   │   │       └── EmergencyTypes.sol
+│   │   └── pause/
+│   │       ├── EducPause.sol
+│   │       ├── PauseEvents.sol
+│   │       └── types/
+│   │           └── PauseTypes.sol
+│   └── vesting/
+│       ├── EducVesting.sol
+│       ├── EducVestingCloneable.sol
+│       ├── EducVestingFactory.sol
+│       ├── VestingEvents.sol
+│       └── types/
+│           └── VestingTypes.sol
+├── scripts/
+│   ├── create-token-snapshot.js
+│   ├── deploy.js
+│   ├── deploy-upgradeable.js
+│   ├── migrate-to-recovery.js
+│   ├── upgrade-token.js
+│   ├── verify.js
+│   └── verify-proxy.js
+├── test/
+│   └── Lock.js
+├── ignition/
+│   └── modules/
+│       └── Lock.js
+├── hardhat.config.js
+├── package.json
+├── .solhint.json
+├── .gitignore
+├── MIGRATION_GUIDE.md
+└── README.md
+```
+
 ## Technical Specifications
 
 - **Blockchain**: Ethereum
@@ -89,6 +183,20 @@ This project implements a complete token-based educational reward system on Ethe
 - **Framework**: Hardhat
 - **Libraries**: OpenZeppelin Contracts 5.2.0, OpenZeppelin Contracts Upgradeable 5.2.0
 - **Testing**: Mocha, Chai
+
+## Requirements
+
+### Development Environment
+- Node.js (v16+)
+- npm or yarn
+- Git
+- 4GB+ RAM recommended
+- Stable internet connection
+
+### External Services
+- Ethereum RPC Provider (Infura, Alchemy, etc.)
+- Etherscan API Key (for contract verification)
+- MetaMask or other Ethereum wallet
 
 ## Development Environment Setup
 
@@ -130,6 +238,22 @@ Compile the contracts:
 npm run compile
 # or
 yarn compile
+```
+
+### Testing
+
+Run the test suite:
+```bash
+npm run test
+# or
+yarn test
+```
+
+Generate test coverage report:
+```bash
+npm run coverage
+# or
+yarn coverage
 ```
 
 ### Deployment
@@ -333,8 +457,8 @@ npx hardhat run scripts/upgrade-token.js --network <network-name>
 └─────┬───────┘     └───────┬───────┘     └──────┬──────┘
       │                     │                    │
       │                     ▼                    │
-      │             ┌───────────────┐            │
-      └────────────┤  EducCourse   │◄───────────┘
+      │            ┌───────────────┐             │
+      └────────────┤  EducCourse   │◄────────────┘
                    └───────┬───────┘
                            │
                            ▼
@@ -345,9 +469,9 @@ npx hardhat run scripts/upgrade-token.js --network <network-name>
 
 ### Governance and Security
 ```
-┌─────────────┐     ┌───────────────┐     ┌────────────────────┐
+┌─────────────┐     ┌───────────────┐     ┌───────────────────────┐
 │ EducPause   │◄────┤ EducMultisig  │────►│ EducEmergencyRecovery │
-└─────────────┘     └───────┬───────┘     └────────────────────┘
+└─────────────┘     └───────┬───────┘     └───────────────────────┘
                             │
                             ▼
                     ┌───────────────┐
@@ -357,16 +481,71 @@ npx hardhat run scripts/upgrade-token.js --network <network-name>
 
 ### Vesting System
 ```
-┌─────────────────┐     ┌───────────────┐
-│ EducVestingFactory │──►│ EducVesting 1 │
-└─────────────────┘     └───────────────┘
-                        ┌───────────────┐
-                        │ EducVesting 2 │
-                        └───────────────┘
-                        ┌───────────────┐
-                        │ EducVesting N │
-                        └───────────────┘
+┌───────────────────┐     ┌───────────────┐
+│ EducVestingFactory│──►  │ EducVesting 1 │
+└───────────────────┘     └───────────────┘
+                          ┌───────────────┐
+                          │ EducVesting 2 │
+                          └───────────────┘
+                          ┌───────────────┐
+                          │ EducVesting N │
+                          └───────────────┘
 ```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Proxy Initialization Failure**:
+   - Ensure initialization function is called only once
+   - Verify correct admin address is provided
+
+2. **Vesting Schedule Issues**:
+   - Check that token allowance is sufficient for vesting contract
+   - Verify correct beneficiary addresses
+
+3. **Emergency Recovery Activation Failure**:
+   - Ensure caller has emergency role
+   - Verify multisig thresholds are correctly set
+
+4. **Network Connection Problems**:
+   - Check your RPC endpoint URL in `.env` file
+   - Ensure you have sufficient ETH for gas fees
+
+5. **Contract Verification Errors**:
+   - Confirm you're using the exact compiler version
+   - Check that constructor arguments match exactly
+
+### Solutions
+
+If you encounter the "cannot estimate gas" error, try:
+```bash
+npx hardhat run scripts/deploy.js --network <network-name> --gas-price 50000000000
+```
+
+For contract size errors:
+```bash
+# Enable IR compiler optimization in hardhat.config.js
+# Set viaIR: true in the compiler settings
+```
+
+## Contributing
+
+We welcome contributions to the EducToken project!
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+Please ensure all tests pass before submitting PRs.
+
+## Roadmap
+
+- **Q2 2025**: Mobile integration and wallet support
+- **Q3 2025**: Multi-chain support for Polygon and Arbitrum
+- **Q4 2025**: Analytics dashboard and achievement NFTs
 
 ## Contract Security
 

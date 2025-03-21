@@ -9,7 +9,7 @@ import "../interfaces/IEducStudent.sol";
 
 /**
  * @title EducStudent
- * @dev Manages student accounts and their educational achievements
+ * @dev Manages student accounts and their educational achievements with enhanced tracking
  */
 contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
     // Student structure with enhanced tracking
@@ -35,9 +35,13 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
     mapping(address => Student) public students;
     mapping(address => mapping(string => bool)) public courseCompletions;
     mapping(bytes32 => CourseCompletion) public completionRecords;
+    
+    // Activity tracking by category
+    mapping(address => mapping(string => uint256)) public lastActivityByCategory;
+    mapping(address => string[]) public studentActivityCategories;
 
     // Constraints
-    uint32 public constant MAX_COURSES_PER_STUDENT = 100;
+    uint32 public constant MAX_COURSES_PER_STUDENT = 1000;
     uint256 public constant STUDENT_INACTIVITY_PERIOD = 365 days;
 
     // Events with enhanced logging
@@ -59,6 +63,12 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         string actionType,
         uint256 timestamp
     );
+    
+    event StudentActivityCategoryAdded(
+        address indexed student,
+        string categoryName,
+        uint256 timestamp
+    );
 
     /**
      * @dev Constructor sets up initial admin role
@@ -69,6 +79,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(EducRoles.ADMIN_ROLE, admin);
+        _grantRole(EducRoles.EDUCATOR_ROLE, admin);
     }
 
     /**
@@ -86,8 +97,49 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
             registrationTimestamp: currentTime
         });
 
+        // Initialize default activity categories
+        _addActivityCategory(student, "Registration");
+        _addActivityCategory(student, "CourseCompletion");
+        _addActivityCategory(student, "TokenUsage");
+        
+        // Record first activity
+        _recordActivity(student, "Registration", currentTime);
+
         emit StudentRegistered(student, currentTime);
         emit StudentActivityUpdated(student, "Registration", currentTime);
+    }
+    
+    /**
+     * @dev Internal method to add an activity category for a student
+     * @param student Address of the student
+     * @param category Activity category name
+     */
+    function _addActivityCategory(address student, string memory category) internal {
+        // Check if category already exists
+        for (uint256 i = 0; i < studentActivityCategories[student].length; i++) {
+            if (keccak256(bytes(studentActivityCategories[student][i])) == keccak256(bytes(category))) {
+                return; // Category already exists
+            }
+        }
+        
+        studentActivityCategories[student].push(category);
+        emit StudentActivityCategoryAdded(student, category, block.timestamp);
+    }
+    
+    /**
+     * @dev Internal method to record student activity
+     * @param student Address of the student
+     * @param category Activity category
+     * @param timestamp Time of activity
+     */
+    function _recordActivity(address student, string memory category, uint256 timestamp) internal {
+        // Update general last activity
+        students[student].lastActivity = timestamp;
+        
+        // Update category-specific activity
+        lastActivityByCategory[student][category] = timestamp;
+        
+        emit StudentActivityUpdated(student, category, timestamp);
     }
 
     /**
@@ -108,7 +160,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
     }
 
     /**
-     * @dev Records a course completion with detailed validation
+     * @dev Records a course completion with detailed validation and tracking
      * @param student Address of the student
      * @param courseId Identifier of the completed course
      * @param tokensAwarded Tokens earned for course completion
@@ -143,7 +195,10 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         // Update student statistics
         studentData.totalEarned += tokensAwarded;
         studentData.coursesCompleted++;
-        studentData.lastActivity = block.timestamp;
+        uint256 currentTime = block.timestamp;
+        
+        // Record activity
+        _recordActivity(student, "CourseCompletion", currentTime);
 
         // Mark course as completed
         courseCompletions[student][courseId] = true;
@@ -154,9 +209,9 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
             student: student,
             courseId: courseId,
             verifiedBy: msg.sender,
-            completionTime: block.timestamp,
+            completionTime: currentTime,
             tokensAwarded: tokensAwarded,
-            additionalMetadata: keccak256(abi.encodePacked(student, courseId, block.timestamp))
+            additionalMetadata: keccak256(abi.encodePacked(student, courseId, currentTime))
         });
 
         emit CourseCompletionRecorded(
@@ -164,12 +219,106 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
             courseId,
             msg.sender,
             tokensAwarded,
-            block.timestamp
+            currentTime
         );
-        emit StudentActivityUpdated(student, "Course Completion", block.timestamp);
+    }
+    
+    /**
+     * @dev Records a student token usage activity
+     * @param student Address of the student
+     * @param tokensUsed Amount of tokens used
+     * @param purpose Purpose of token usage
+     */
+    function recordTokenUsage(
+        address student, 
+        uint256 tokensUsed, 
+        string calldata purpose
+    )
+        external
+        onlyRole(EducRoles.ADMIN_ROLE)
+        whenNotPaused
+        nonReentrant
+    {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
+        require(tokensUsed > 0, "EducStudent: Invalid token amount");
+        require(bytes(purpose).length > 0, "EducStudent: Purpose cannot be empty");
+        
+        uint256 currentTime = block.timestamp;
+        
+        // Record activity
+        _recordActivity(student, "TokenUsage", currentTime);
+        
+        emit StudentActivityUpdated(student, 
+            string(abi.encodePacked("TokenUsage: ", purpose)), 
+            currentTime
+        );
+    }
+    
+    /**
+     * @dev Adds a custom activity category for a student
+     * @param student Address of the student
+     * @param category New activity category name
+     */
+    function addActivityCategory(address student, string calldata category) 
+        external
+        onlyRole(EducRoles.ADMIN_ROLE)
+        whenNotPaused
+    {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
+        require(bytes(category).length > 0, "EducStudent: Category cannot be empty");
+        
+        _addActivityCategory(student, category);
+    }
+    
+    /**
+     * @dev Records a custom activity for a student
+     * @param student Address of the student
+     * @param category Activity category
+     * @param details Activity details
+     */
+    function recordCustomActivity(
+        address student,
+        string calldata category,
+        string calldata details
+    )
+        external
+        onlyRole(EducRoles.ADMIN_ROLE)
+        whenNotPaused
+        nonReentrant
+    {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
+        require(bytes(category).length > 0, "EducStudent: Category cannot be empty");
+        
+        bool categoryExists = false;
+        for (uint256 i = 0; i < studentActivityCategories[student].length; i++) {
+            if (keccak256(bytes(studentActivityCategories[student][i])) == keccak256(bytes(category))) {
+                categoryExists = true;
+                break;
+            }
+        }
+        
+        if (!categoryExists) {
+            _addActivityCategory(student, category);
+        }
+        
+        uint256 currentTime = block.timestamp;
+        _recordActivity(student, category, currentTime);
+        
+        emit StudentActivityUpdated(
+            student, 
+            string(abi.encodePacked(category, ": ", details)), 
+            currentTime
+        );
     }
 
-    // Existing view functions remain the same as in original implementation
+    // View functions with enhanced functionality
+    
+    /**
+     * @dev Checks if a student has completed a specific course
+     */
     function hasCourseCompletion(address student, string calldata courseId) 
         external 
         view 
@@ -179,6 +328,9 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         return courseCompletions[student][courseId];
     }
 
+    /**
+     * @dev Gets a student's total earned tokens
+     */
     function getStudentTotalEarned(address student) 
         external 
         view 
@@ -188,6 +340,9 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         return students[student].totalEarned;
     }
 
+    /**
+     * @dev Gets the number of courses completed by a student
+     */
     function getStudentCoursesCompleted(address student) 
         external 
         view 
@@ -197,6 +352,9 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         return students[student].coursesCompleted;
     }
 
+    /**
+     * @dev Gets the last activity timestamp for a student
+     */
     function getStudentLastActivity(address student) 
         external 
         view 
@@ -205,7 +363,32 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
     {
         return students[student].lastActivity;
     }
+    
+    /**
+     * @dev Gets the last activity timestamp for a student in a specific category
+     */
+    function getStudentLastActivityByCategory(address student, string calldata category)
+        external
+        view
+        returns (uint256)
+    {
+        return lastActivityByCategory[student][category];
+    }
+    
+    /**
+     * @dev Gets all activity categories for a student
+     */
+    function getStudentActivityCategories(address student)
+        external
+        view
+        returns (string[] memory)
+    {
+        return studentActivityCategories[student];
+    }
 
+    /**
+     * @dev Checks if a student is registered
+     */
     function isStudent(address student) 
         external 
         view 
@@ -213,6 +396,21 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         returns (bool) 
     {
         return students[student].studentAddress != address(0);
+    }
+    
+    /**
+     * @dev Checks if a student is considered inactive
+     */
+    function isStudentInactive(address student)
+        external
+        view
+        returns (bool)
+    {
+        if (students[student].studentAddress == address(0)) {
+            return false; // Not a student
+        }
+        
+        return (block.timestamp - students[student].lastActivity) > STUDENT_INACTIVITY_PERIOD;
     }
 
     /**

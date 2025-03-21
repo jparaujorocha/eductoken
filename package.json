@@ -10,12 +10,22 @@
     "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
     "verify": "hardhat run scripts/verify.js",
     "node": "hardhat node",
-    "lint": "solhint 'contracts/**/*.sol'"
+    "lint": "solhint 'contracts/**/*.sol'",
+    "format": "prettier --write 'contracts/**/*.sol'",
+    "doc": "solidity-docgen",
+    "flatten": "hardhat flatten"
   },
-  "keywords": [],
+  "keywords": [
+    "ethereum",
+    "education",
+    "token",
+    "reward",
+    "erc20",
+    "blockchain"
+  ],
   "author": "",
-  "license": "ISC",
-  "description": "",
+  "license": "MIT",
+  "description": "ERC20 token system for educational incentives and rewards",
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
@@ -36,7 +46,12 @@
     "hardhat": "^2.22.19",
     "hardhat-contract-sizer": "^2.10.0",
     "hardhat-gas-reporter": "^2.0.0",
+    "prettier": "^3.0.3",
+    "prettier-plugin-solidity": "^1.1.3",
+    "solhint": "^4.0.0",
+    "solhint-plugin-prettier": "^0.1.0",
     "solidity-coverage": "^0.8.14",
+    "solidity-docgen": "^0.7.0",
     "ts-node": "^10.9.2",
     "typechain": "^8.3.2",
     "typescript": "^5.8.2"

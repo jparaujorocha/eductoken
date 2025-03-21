@@ -78,7 +78,23 @@ async function main() {
   await educLearning.deploymentTransaction().wait();
   console.log(`EducLearning deployed to: ${educLearning.target}`);
 
-  // Initialize the EducLearning contract
+  // Setting up roles BEFORE initialization
+  console.log("Setting up roles...");
+  
+  const EDUCATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("EDUCATOR_ROLE"));
+  await student.grantRole(EDUCATOR_ROLE, educLearning.target);
+  await course.grantRole(EDUCATOR_ROLE, educLearning.target);
+  
+  const ADMIN_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ADMIN_ROLE"));
+  await token.grantRole(ADMIN_ROLE, educLearning.target);
+  await educator.grantRole(ADMIN_ROLE, educLearning.target);
+  await student.grantRole(ADMIN_ROLE, educLearning.target);
+  await course.grantRole(ADMIN_ROLE, educLearning.target);
+
+  const MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
+  await token.grantRole(MINTER_ROLE, educLearning.target);
+
+  // Initialize the EducLearning contract AFTER granting roles
   console.log("Initializing EducLearning...");
   const initTx = await educLearning.initialize(
     token.target,
@@ -92,20 +108,6 @@ async function main() {
   );
   await initTx.wait();
   console.log("EducLearning initialized");
-
-  // Setting up roles
-  console.log("Setting up roles...");
-  
-  const EDUCATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("EDUCATOR_ROLE"));
-  await course.grantRole(EDUCATOR_ROLE, educLearning.target);
-  
-  const ADMIN_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ADMIN_ROLE"));
-  await token.grantRole(ADMIN_ROLE, educLearning.target);
-  await educator.grantRole(ADMIN_ROLE, educLearning.target);
-  await student.grantRole(ADMIN_ROLE, educLearning.target);
-
-  const MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
-  await token.grantRole(MINTER_ROLE, educLearning.target);
 
   console.log("Deployment and initialization complete!");
 

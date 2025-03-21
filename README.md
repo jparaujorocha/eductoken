@@ -4,44 +4,51 @@ EducToken is an ERC20 token designed for a decentralized educational incentive s
 
 ## Project Overview
 
-This project implements a complete token-based educational reward system on Ethereum, with role-based access control, course management, student tracking, and governance features.
+This project implements a complete token-based educational reward system on Ethereum, with role-based access control, course management, student tracking, activity monitoring, and governance features.
 
 ## Key Features
 
 - **ERC20 Token Implementation**
-  - Total Supply: 10,000,000 EDUC
+  - Total Supply: 10,000,000 EDUC with 18 decimals
   - Controlled minting for educational rewards
-  - Burning mechanism for expired tokens
+  - Burning mechanism for expired/inactive tokens after 12 months
+  - Daily minting limit of 1,000 tokens
+
+- **Educational Reward System**
+  - Specialized `mintReward` function with reason tracking
+  - `batchMintReward` for efficient multiple student rewards
+  - Comprehensive event logging with `RewardIssued` events
+  - Inactive account detection and token recovery
 
 - **Role-Based Access Control**
   - Admin role for system management
   - Educator role for course creation and rewards
   - Governance through multisignature proposals
 
+- **Student Activity Tracking**
+  - Detailed activity history by category
+  - Timestamps for all student actions
+  - Inactivity detection for account management
+
 - **Course Management**
   - Create and update courses
   - Set reward amounts per course
   - Track course completions
 
-- **Student Tracking**
-  - Record course completions
-  - Track token earnings
-  - Maintain educational history
-
 - **Security Features**
-  - Pausable operations
-  - Granular pause control
-  - Emergency multisignature governance
+  - Pausable operations with granular control
+  - Comprehensive input validation
+  - Protection against reentrancy attacks
 
 ## System Architecture
 
 ### Core Contracts
 
-- **EducToken**: ERC20 token with minting and burning capabilities
+- **EducToken**: Enhanced ERC20 token with education-specific reward functions
 - **EducEducator**: Manages educator registrations and permissions
-- **EducStudent**: Tracks student registrations and course completions
+- **EducStudent**: Tracks student registrations, activities, and course completions
 - **EducCourse**: Handles course creation and management
-- **EducLearning**: Main contract that integrates all components
+- **EducLearning**: Main integration contract with advanced reward functions
 
 ### Supporting Contracts
 
@@ -100,15 +107,6 @@ npm run compile
 yarn compile
 ```
 
-### Testing
-
-Run the test suite:
-```bash
-npm test
-# or
-yarn test
-```
-
 ### Deployment
 
 1. Start a local node for development:
@@ -132,15 +130,6 @@ npm run deploy:sepolia
 yarn deploy:sepolia
 ```
 
-4. Verify contracts on Etherscan:
-   - Update the addresses in `scripts/verify.js`
-   - Run:
-```bash
-npm run verify
-# or
-yarn verify
-```
-
 ## Usage Examples
 
 ### Register an Educator
@@ -153,14 +142,26 @@ const tx = await educatorContract.registerEducator(
 await tx.wait();
 ```
 
-### Create a Course
+### Issue Educational Rewards
 
 ```javascript
-const tx = await courseContract.createCourse(
-  "CS101",                       // Course ID
-  "Introduction to Blockchain",  // Course name
-  ethers.utils.parseEther("10"), // Reward amount (10 tokens)
-  ethers.utils.id("metadata")    // Metadata hash
+// Single reward
+const tx = await educLearningContract.issueReward(
+  studentAddress,
+  ethers.utils.parseEther("10"),
+  "Outstanding project submission"
+);
+await tx.wait();
+
+// Batch rewards
+const tx = await educLearningContract.batchIssueRewards(
+  [student1, student2, student3],
+  [
+    ethers.utils.parseEther("5"),
+    ethers.utils.parseEther("7"),
+    ethers.utils.parseEther("3")
+  ],
+  ["Quiz completion", "Group project", "Active participation"]
 );
 await tx.wait();
 ```
@@ -171,6 +172,16 @@ await tx.wait();
 const tx = await educLearningContract.completeCourse(
   studentAddress,
   "CS101" // Course ID
+);
+await tx.wait();
+```
+
+### Burn Tokens from Inactive Accounts
+
+```javascript
+const tx = await educLearningContract.burnInactiveTokens(
+  inactiveStudentAddress,
+  ethers.utils.parseEther("50") // Amount to burn
 );
 await tx.wait();
 ```

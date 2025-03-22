@@ -156,6 +156,11 @@ contract EducLearning is AccessControl, Pausable, ReentrancyGuard, Initializable
         require(course.isCourseActive(msg.sender, courseId), "EducLearning: Course not active");
         require(!student.hasCourseCompletion(studentAddress, courseId), "EducLearning: Course already completed");
 
+        // Validate student is registered, or register if not
+        if (!student.isStudent(studentAddress)) {
+            student.registerStudent(studentAddress);
+        }
+
         // Get course reward
         uint256 rewardAmount = course.getCourseReward(msg.sender, courseId);
         

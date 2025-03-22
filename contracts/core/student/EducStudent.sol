@@ -47,9 +47,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         nonReentrant
         onlyRole(EducRoles.ADMIN_ROLE)
     {
-        require(params.studentAddress != address(0), "EducStudent: Invalid student address");
-        require(students[params.studentAddress].studentAddress == address(0), "EducStudent: Student already registered");
-
+        _validateStudentAddress(params.studentAddress);
         _registerStudent(params.studentAddress);
     }
 
@@ -63,10 +61,8 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
         onlyRole(EducRoles.ADMIN_ROLE)
-        {
-        require(student != address(0), "EducStudent: Invalid student address");
-        require(students[student].studentAddress == address(0), "EducStudent: Student already registered");
-
+    {
+        _validateStudentAddress(student);
         _registerStudent(student);
     }
 
@@ -81,15 +77,13 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
     {
-        require(params.studentAddress != address(0), "EducStudent: Invalid student address");
-        require(bytes(params.courseId).length > 0, "EducStudent: Invalid course ID");
-        require(!courseCompletions[params.studentAddress][params.courseId], "EducStudent: Course already completed");
+        _validateCourseCompletion(params.studentAddress, params.courseId);
         
-        // Auto-register student if not exists
+        // Auto-register student if not already registered
         if (students[params.studentAddress].studentAddress == address(0)) {
             _registerStudent(params.studentAddress);
         }
-
+        
         _recordCourseCompletion(params.studentAddress, params.courseId, params.tokensAwarded);
     }
 
@@ -97,28 +91,22 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
      * @dev Legacy method for compatibility - records a course completion
      * @param student Address of the student
      * @param courseId ID of the completed course
-     * @param tokensAwarded Amount of tokens awarded for completion
+     * @param tokensAwarded Amount of tokens awarded
      */
-    function recordCourseCompletion(
-        address student,
-        string calldata courseId,
-        uint256 tokensAwarded
-    )
+    function recordCourseCompletion(address student, string calldata courseId, uint256 tokensAwarded)
         external
         override
         onlyRole(EducRoles.EDUCATOR_ROLE)
         whenNotPaused
         nonReentrant
     {
-        require(student != address(0), "EducStudent: Invalid student address");
-        require(bytes(courseId).length > 0, "EducStudent: Invalid course ID");
-        require(!courseCompletions[student][courseId], "EducStudent: Course already completed");
+        _validateCourseCompletion(student, courseId);
         
-        // Auto-register student if not exists
+        // Auto-register student if not already registered
         if (students[student].studentAddress == address(0)) {
             _registerStudent(student);
         }
-
+        
         _recordCourseCompletion(student, courseId, tokensAwarded);
     }
     
@@ -133,11 +121,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
     {
-        require(params.studentAddress != address(0), "EducStudent: Invalid student address");
-        require(students[params.studentAddress].studentAddress != address(0), "EducStudent: Student not registered");
-        require(params.tokensUsed > 0, "EducStudent: Invalid token amount");
-        require(bytes(params.purpose).length > 0, "EducStudent: Purpose cannot be empty");
-        
+        _validateTokenUsage(params.studentAddress, params.tokensUsed, params.purpose);
         _recordTokenUsage(params.studentAddress, params.tokensUsed, params.purpose);
     }
     
@@ -158,11 +142,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
     {
-        require(student != address(0), "EducStudent: Invalid student address");
-        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
-        require(tokensUsed > 0, "EducStudent: Invalid token amount");
-        require(bytes(purpose).length > 0, "EducStudent: Purpose cannot be empty");
-        
+        _validateTokenUsage(student, tokensUsed, purpose);
         _recordTokenUsage(student, tokensUsed, purpose);
     }
     
@@ -177,10 +157,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         onlyRole(EducRoles.ADMIN_ROLE)
         whenNotPaused
     {
-        require(student != address(0), "EducStudent: Invalid student address");
-        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
-        require(bytes(category).length > 0, "EducStudent: Category cannot be empty");
-        
+        _validateActivityCategory(student, category);
         _addActivityCategory(student, category);
     }
     
@@ -195,10 +172,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
     {
-        require(params.studentAddress != address(0), "EducStudent: Invalid student address");
-        require(students[params.studentAddress].studentAddress != address(0), "EducStudent: Student not registered");
-        require(bytes(params.category).length > 0, "EducStudent: Category cannot be empty");
-        
+        _validateCustomActivity(params.studentAddress, params.category);
         _recordCustomActivity(params.studentAddress, params.category, params.details);
     }
     
@@ -219,10 +193,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
     {
-        require(student != address(0), "EducStudent: Invalid student address");
-        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
-        require(bytes(category).length > 0, "EducStudent: Category cannot be empty");
-        
+        _validateCustomActivity(student, category);
         _recordCustomActivity(student, category, details);
     }
 
@@ -391,9 +362,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         });
 
         // Initialize default activity categories
-        _addActivityCategory(student, "Registration");
-        _addActivityCategory(student, "CourseCompletion");
-        _addActivityCategory(student, "TokenUsage");
+        _initializeActivityCategories(student);
         
         // Record first activity
         _recordActivity(student, "Registration", currentTime);
@@ -480,20 +449,15 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
      * @param category Activity category name
      */
     function _addActivityCategory(address student, string memory category) private {
-        // Check if category already exists
-        for (uint256 i = 0; i < studentActivityCategories[student].length; i++) {
-            if (keccak256(bytes(studentActivityCategories[student][i])) == keccak256(bytes(category))) {
-                return; // Category already exists
-            }
+        if (!_categoryExists(student, category)) {
+            studentActivityCategories[student].push(category);
+            
+            emit StudentEvents.StudentActivityCategoryAdded(
+                student, 
+                category, 
+                block.timestamp
+            );
         }
-        
-        studentActivityCategories[student].push(category);
-        
-        emit StudentEvents.StudentActivityCategoryAdded(
-            student, 
-            category, 
-            block.timestamp
-        );
     }
     
     /**
@@ -507,15 +471,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         string memory category,
         string memory details
     ) private {
-        bool categoryExists = false;
-        for (uint256 i = 0; i < studentActivityCategories[student].length; i++) {
-            if (keccak256(bytes(studentActivityCategories[student][i])) == keccak256(bytes(category))) {
-                categoryExists = true;
-                break;
-            }
-        }
-        
-        if (!categoryExists) {
+        if (!_categoryExists(student, category)) {
             _addActivityCategory(student, category);
         }
         
@@ -541,6 +497,86 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         
         // Update category-specific activity
         lastActivityByCategory[student][category] = timestamp;
+    }
+
+    /**
+     * @dev Internal method to initialize default activity categories for a student
+     * @param student Address of the student
+     */
+    function _initializeActivityCategories(address student) private {
+        _addActivityCategory(student, "Registration");
+        _addActivityCategory(student, "CourseCompletion");
+        _addActivityCategory(student, "TokenUsage");
+    }
+
+    /**
+     * @dev Validates the student address
+     * @param student Address of the student
+     */
+    function _validateStudentAddress(address student) private view {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress == address(0), "EducStudent: Student already registered");
+    }
+
+    /**
+     * @dev Validates the course completion parameters
+     * @param student Address of the student
+     * @param courseId ID of the course
+     */
+    function _validateCourseCompletion(address student, string memory courseId) private view {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(bytes(courseId).length > 0, "EducStudent: Invalid course ID");
+        require(!courseCompletions[student][courseId], "EducStudent: Course already completed");
+    }
+
+    /**
+     * @dev Validates the token usage parameters
+     * @param student Address of the student
+     * @param tokensUsed Amount of tokens used
+     * @param purpose Purpose of token usage
+     */
+    function _validateTokenUsage(address student, uint256 tokensUsed, string memory purpose) private view {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
+        require(tokensUsed > 0, "EducStudent: Invalid token amount");
+        require(bytes(purpose).length > 0, "EducStudent: Purpose cannot be empty");
+    }
+
+    /**
+     * @dev Validates the activity category parameters
+     * @param student Address of the student
+     * @param category Activity category
+     */
+    function _validateActivityCategory(address student, string memory category) private view {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
+        require(bytes(category).length > 0, "EducStudent: Category cannot be empty");
+    }
+
+    /**
+     * @dev Validates the custom activity parameters
+     * @param student Address of the student
+     * @param category Activity category
+     */
+    function _validateCustomActivity(address student, string memory category) private view {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
+        require(bytes(category).length > 0, "EducStudent: Category cannot be empty");
+    }
+
+    /**
+     * @dev Checks if a category exists for a student
+     * @param student Address of the student
+     * @param category Activity category
+     * @return exists True if the category exists
+     */
+    function _categoryExists(address student, string memory category) private view returns (bool exists) {
+        for (uint256 i = 0; i < studentActivityCategories[student].length; i++) {
+            if (keccak256(bytes(studentActivityCategories[student][i])) == keccak256(bytes(category))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

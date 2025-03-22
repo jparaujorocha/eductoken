@@ -216,17 +216,19 @@ contract EducVesting is AccessControl, Pausable, ReentrancyGuard {
             _duration, _cliffDuration, _vestingType
         );
 
-        VestingSchedule storage schedule = vestingSchedules[vestingScheduleId];
-        schedule.beneficiary = _beneficiary;
-        schedule.totalAmount = _totalAmount;
-        schedule.startTime = effectiveStartTime;
-        schedule.duration = _duration;
-        schedule.cliffDuration = _cliffDuration;
-        schedule.milestoneCount = _milestoneCount;
-        schedule.milestonesReached = _milestonesReached;
-        schedule.revocable = _revocable;
-        schedule.vestingType = _vestingType;
-        schedule.metadata = _metadata;
+        _initializeVestingSchedule(
+            vestingScheduleId,
+            _beneficiary,
+            _totalAmount,
+            effectiveStartTime,
+            _duration,
+            _cliffDuration,
+            _milestoneCount,
+            _milestonesReached,
+            _revocable,
+            _vestingType,
+            _metadata
+        );
 
         _trackVestingSchedule(_beneficiary, vestingScheduleId);
 
@@ -242,6 +244,32 @@ contract EducVesting is AccessControl, Pausable, ReentrancyGuard {
         );
 
         return vestingScheduleId;
+    }
+
+    function _initializeVestingSchedule(
+        bytes32 vestingScheduleId,
+        address _beneficiary,
+        uint256 _totalAmount,
+        uint256 _startTime,
+        uint256 _duration,
+        uint256 _cliffDuration,
+        uint32 _milestoneCount,
+        uint32 _milestonesReached,
+        bool _revocable,
+        VestingTypes.VestingType _vestingType,
+        bytes32 _metadata
+    ) private {
+        VestingSchedule storage schedule = vestingSchedules[vestingScheduleId];
+        schedule.beneficiary = _beneficiary;
+        schedule.totalAmount = _totalAmount;
+        schedule.startTime = _startTime;
+        schedule.duration = _duration;
+        schedule.cliffDuration = _cliffDuration;
+        schedule.milestoneCount = _milestoneCount;
+        schedule.milestonesReached = _milestonesReached;
+        schedule.revocable = _revocable;
+        schedule.vestingType = _vestingType;
+        schedule.metadata = _metadata;
     }
 
     function _generateVestingScheduleId(

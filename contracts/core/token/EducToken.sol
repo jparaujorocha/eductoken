@@ -136,8 +136,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         validAddress(params.student)
         positiveAmount(params.amount)
     {
-        require(bytes(params.reason).length > 0, "EducToken: reason cannot be empty");
-        
+        _validateMintRewardParams(params);
         _validateMintAmount(params.amount);
         _trackDailyMinting(params.amount);
         _performMint(params.student, params.amount);
@@ -161,8 +160,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         validAddress(student)
         positiveAmount(amount)
     {
-        require(bytes(reason).length > 0, "EducToken: reason cannot be empty");
-        
+        _validateMintRewardReason(reason);
         _validateMintAmount(amount);
         _trackDailyMinting(amount);
         _performMint(student, amount);
@@ -183,13 +181,10 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
     {
         _validateBatchInputs(params.students, params.amounts, params.reasons);
         
-        // Calculate total amount and validate inputs
         uint256 totalAmount = _validateAndSumBatchAmounts(params.students, params.amounts, params.reasons);
         
-        // Track daily minting limits for the total amount
         _trackDailyMinting(totalAmount);
         
-        // Process each student
         _performBatchMint(params.students, params.amounts, params.reasons);
         
         totalMinted += totalAmount;
@@ -214,13 +209,10 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
     {
         _validateBatchInputs(students, amounts, reasons);
         
-        // Calculate total amount and validate inputs
         uint256 totalAmount = _validateAndSumBatchAmounts(students, amounts, reasons);
         
-        // Track daily minting limits for the total amount
         _trackDailyMinting(totalAmount);
         
-        // Process each student
         _performBatchMint(students, amounts, reasons);
         
         totalMinted += totalAmount;
@@ -237,7 +229,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         nonReentrant 
         positiveAmount(amount)
     {
-        require(balanceOf(msg.sender) >= amount, "EducToken: burn amount exceeds balance");
+        _validateBurnAmount(msg.sender, amount);
 
         _burn(msg.sender, amount);
         totalBurned += amount;
@@ -257,10 +249,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         validAddress(params.from)
         positiveAmount(params.amount)
     {
-        require(balanceOf(params.from) >= params.amount, "EducToken: burn amount exceeds balance");
-        
-        // Validate account inactivity 
-        require(_isAccountInactive(params.from), "EducToken: account is not inactive");
+        _validateBurnFromInactive(params.from, params.amount);
         
         _burn(params.from, params.amount);
         totalBurned += params.amount;
@@ -283,10 +272,7 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
         validAddress(from)
         positiveAmount(amount)
     {
-        require(balanceOf(from) >= amount, "EducToken: burn amount exceeds balance");
-        
-        // Validate account inactivity 
-        require(_isAccountInactive(from), "EducToken: account is not inactive");
+        _validateBurnFromInactive(from, amount);
         
         _burn(from, amount);
         totalBurned += amount;
@@ -421,25 +407,27 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
      * @return bool True if the account is inactive and eligible for token expiration
      */
     function _isAccountInactive(address account) internal view returns (bool) {
-        // Admin accounts cannot be considered inactive
-        if (hasRole(EducRoles.ADMIN_ROLE, account)) {
+        if (_isAdmin(account) || _isStudentContractUnset() || !_isRegisteredStudent(account)) {
             return false;
         }
         
-        // If student contract is not set, accounts cannot be inactive
-        if (address(studentContract) == address(0)) {
-            return false;
-        }
-        
-        // Check if this is a registered student
-        if (!studentContract.isStudent(account)) {
-            return false;
-        }
-        
-        // Get last activity timestamp from student contract
         uint256 lastActivity = studentContract.getStudentLastActivity(account);
-        
-        // Account is inactive if no activity for BURN_COOLDOWN_PERIOD (1 year)
+        return _isInactiveForPeriod(lastActivity);
+    }
+    
+    function _isAdmin(address account) private view returns (bool) {
+        return hasRole(EducRoles.ADMIN_ROLE, account);
+    }
+    
+    function _isStudentContractUnset() private view returns (bool) {
+        return address(studentContract) == address(0);
+    }
+    
+    function _isRegisteredStudent(address account) private view returns (bool) {
+        return studentContract.isStudent(account);
+    }
+    
+    function _isInactiveForPeriod(uint256 lastActivity) private view returns (bool) {
         return lastActivity > 0 && (block.timestamp - lastActivity) > SystemConstants.BURN_COOLDOWN_PERIOD;
     }
     
@@ -481,5 +469,22 @@ contract EducToken is ERC20, AccessControl, Pausable, ReentrancyGuard, IEducToke
      */
     function getTotalBurned() external view override returns (uint256 amount) {
         return totalBurned;
+    }
+
+    function _validateMintRewardParams(TokenTypes.MintRewardParams calldata params) private pure {
+        require(bytes(params.reason).length > 0, "EducToken: reason cannot be empty");
+    }
+
+    function _validateMintRewardReason(string calldata reason) private pure {
+        require(bytes(reason).length > 0, "EducToken: reason cannot be empty");
+    }
+
+    function _validateBurnAmount(address account, uint256 amount) private view {
+        require(balanceOf(account) >= amount, "EducToken: burn amount exceeds balance");
+    }
+
+    function _validateBurnFromInactive(address from, uint256 amount) private view {
+        require(balanceOf(from) >= amount, "EducToken: burn amount exceeds balance");
+        require(_isAccountInactive(from), "EducToken: account is not inactive");
     }
 }

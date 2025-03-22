@@ -14,18 +14,14 @@ import "./types/PauseTypes.sol";
  * @dev Advanced granular pause mechanism for the educational ecosystem
  */
 contract EducPause is AccessControl, Pausable, IEducPause {
-    // Current pause state tracking
     uint32 public pauseFlags;
     address public lastPauseAuthority;
     
-    // Pause overrides for specific addresses
     mapping(address => mapping(uint32 => bool)) private pauseOverrides;
     
-    // Pause action history
     PauseTypes.PauseAction[] private pauseActions;
     PauseTypes.UnpauseAction[] private unpauseActions;
 
-    // Modifiers
     modifier onlyEmergencyRole() {
         require(hasRole(EducRoles.EMERGENCY_ROLE, msg.sender), 
             "EducPause: caller does not have emergency role");
@@ -38,31 +34,18 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         _;
     }
 
-    /**
-     * @dev Constructor sets up initial admin and emergency roles
-     * @param admin Administrator address
-     */
     constructor(address admin) {
         require(admin != address(0), "EducPause: Invalid admin address");
-
         _setupInitialRoles(admin);
-        pauseFlags = 0;  // Initially no functions paused
+        pauseFlags = 0;
     }
     
-    /**
-     * @dev Sets up initial roles for the admin
-     * @param admin Address to receive admin and emergency roles
-     */
     function _setupInitialRoles(address admin) private {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(EducRoles.ADMIN_ROLE, admin);
         _grantRole(EducRoles.EMERGENCY_ROLE, admin);
     }
 
-    /**
-     * @dev Sets emergency pause across the system
-     * @param pauseStatus Global pause status (true to pause, false to unpause)
-     */
     function setEmergencyPause(bool pauseStatus) 
         external 
         override 
@@ -71,57 +54,29 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         _setEmergencyPause(pauseStatus, "");
     }
     
-    /**
-     * @dev Internal implementation of emergency pause
-     * @param pauseStatus Global pause status
-     * @param reason Optional reason for the pause (empty string if none)
-     */
     function _setEmergencyPause(bool pauseStatus, string memory reason) private {
         lastPauseAuthority = msg.sender;
-
         if (pauseStatus) {
-            _pause();
-            pauseFlags = SystemConstants.PAUSE_FLAG_ALL;
-            
-            // Record pause action
-            pauseActions.push(PauseTypes.PauseAction({
-                authority: msg.sender,
-                flags: pauseFlags,
-                isGlobal: true,
-                timestamp: block.timestamp,
-                reason: reason
-            }));
-            
-            emit PauseEvents.SystemPaused(
-                pauseFlags, 
-                msg.sender, 
-                block.timestamp
-            );
+            _pauseSystem(reason);
         } else {
-            _unpause();
-            
-            // Record unpause action
-            unpauseActions.push(PauseTypes.UnpauseAction({
-                authority: msg.sender,
-                unsetFlags: pauseFlags,
-                isGlobal: true,
-                timestamp: block.timestamp
-            }));
-            
-            pauseFlags = 0;
-            
-            emit PauseEvents.SystemUnpaused(
-                pauseFlags, 
-                msg.sender, 
-                block.timestamp
-            );
+            _unpauseSystem();
         }
     }
 
-    /**
-     * @dev Sets granular pause with structured params
-     * @param params Structured parameters (function flags and pause status)
-     */
+    function _pauseSystem(string memory reason) private {
+        _pause();
+        pauseFlags = SystemConstants.PAUSE_FLAG_ALL;
+        _recordPauseAction(pauseFlags, true, reason);
+        emit PauseEvents.SystemPaused(pauseFlags, msg.sender, block.timestamp);
+    }
+
+    function _unpauseSystem() private {
+        _unpause();
+        _recordUnpauseAction(pauseFlags, true);
+        pauseFlags = 0;
+        emit PauseEvents.SystemUnpaused(pauseFlags, msg.sender, block.timestamp);
+    }
+
     function setGranularPause(PauseTypes.GranularPauseParams calldata params)
         external
         override
@@ -130,11 +85,6 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         _setGranularPause(params.functionFlags, params.isPaused);
     }
 
-    /**
-     * @dev Legacy method for compatibility - sets granular pause
-     * @param functionFlags Bitmask of functions to pause/unpause
-     * @param isPausedGranular Pause or unpause status
-     */
     function setGranularPauseLegacy(uint32 functionFlags, bool isPausedGranular) 
         external 
         override
@@ -143,83 +93,42 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         _setGranularPause(functionFlags, isPausedGranular);
     }
     
-    /**
-     * @dev Internal implementation of granular pause
-     * @param functionFlags Bitmask of functions to pause/unpause
-     * @param isGranularPause Pause or unpause status
-     */
     function _setGranularPause(uint32 functionFlags, bool isGranularPause) private {
         lastPauseAuthority = msg.sender;
-
         if (isGranularPause) {
-            pauseFlags |= functionFlags;
-            
-            // Record pause action
-            pauseActions.push(PauseTypes.PauseAction({
-                authority: msg.sender,
-                flags: functionFlags,
-                isGlobal: false,
-                timestamp: block.timestamp,
-                reason: "" // No reason for granular pause
-            }));
-            
-            // Ensure system is paused if any flag is set
-            if (!paused()) {
-                _pause();
-            }
+            _applyGranularPause(functionFlags);
         } else {
-            // Record unpause action
-            unpauseActions.push(PauseTypes.UnpauseAction({
-                authority: msg.sender,
-                unsetFlags: functionFlags & pauseFlags, // Only flags that were set
-                isGlobal: false,
-                timestamp: block.timestamp
-            }));
-            
-            pauseFlags &= ~functionFlags;
-            
-            // Unpause system if no flags remain
-            if (pauseFlags == 0 && paused()) {
-                _unpause();
-            }
+            _removeGranularPause(functionFlags);
         }
-
-        emit PauseEvents.GranularPauseUpdated(
-            pauseFlags, 
-            isGranularPause, 
-            msg.sender, 
-            block.timestamp
-        );
+        emit PauseEvents.GranularPauseUpdated(pauseFlags, isGranularPause, msg.sender, block.timestamp);
     }
-    
-    /**
-     * @dev Sets a pause override for specific addresses
-     * @param address_ Address to set override for
-     * @param functionFlag Function flag to override
-     * @param isOverridden Whether the pause is overridden
-     */
+
+    function _applyGranularPause(uint32 functionFlags) private {
+        pauseFlags |= functionFlags;
+        _recordPauseAction(functionFlags, false, "");
+        if (!paused()) {
+            _pause();
+        }
+    }
+
+    function _removeGranularPause(uint32 functionFlags) private {
+        _recordUnpauseAction(functionFlags & pauseFlags, false);
+        pauseFlags &= ~functionFlags;
+        if (pauseFlags == 0 && paused()) {
+            _unpause();
+        }
+    }
+
     function setPauseOverride(address address_, uint32 functionFlag, bool isOverridden)
         external
         override
         onlyAdminRole
     {
         require(address_ != address(0), "EducPause: Cannot override zero address");
-        
         pauseOverrides[address_][functionFlag] = isOverridden;
-        
-        emit PauseEvents.PauseOverrideSet(
-            functionFlag,
-            isOverridden,
-            msg.sender,
-            block.timestamp
-        );
+        emit PauseEvents.PauseOverrideSet(functionFlag, isOverridden, msg.sender, block.timestamp);
     }
 
-    /**
-     * @dev Checks if a specific function is currently paused
-     * @param functionFlag Function flag to check
-     * @return isFunctionPause Boolean indicating pause status
-     */
     function isFunctionPaused(uint32 functionFlag) 
         external 
         view 
@@ -229,12 +138,6 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         return paused() && ((pauseFlags & functionFlag) != 0);
     }
     
-    /**
-     * @dev Checks if a specific function is paused for an address
-     * @param address_ Address to check
-     * @param functionFlag Function flag to check
-     * @return isPausedForAddress Boolean indicating pause status for the address
-     */
     function isFunctionPausedForAddress(address address_, uint32 functionFlag)
         external
         view
@@ -242,19 +145,12 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         returns (bool isPausedForAddress)
     {
         bool functionallyPaused = paused() && ((pauseFlags & functionFlag) != 0);
-        
-        // Check if there's an override for this address and function
         if (functionallyPaused && pauseOverrides[address_][functionFlag]) {
-            return false; // Override bypasses the pause
+            return false;
         }
-        
         return functionallyPaused;
     }
 
-    /**
-     * @dev Gets the current pause flags
-     * @return flags Current pause flags
-     */
     function getCurrentPauseFlags() 
         external 
         view 
@@ -264,10 +160,6 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         return pauseFlags;
     }
     
-    /**
-     * @dev Gets the address of the last pause authority
-     * @return authority Address that last changed pause status
-     */
     function getLastPauseAuthority()
         external
         view
@@ -277,10 +169,6 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         return lastPauseAuthority;
     }
     
-    /**
-     * @dev Gets whether the system is currently paused
-     * @return isPaused Boolean indicating global pause status
-     */
     function isPaused()
         external
         view
@@ -290,27 +178,14 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         return paused();
     }
     
-    /**
-     * @dev Gets the number of pause actions recorded
-     * @return count Number of pause actions
-     */
     function getPauseActionCount() external view returns (uint256 count) {
         return pauseActions.length;
     }
     
-    /**
-     * @dev Gets the number of unpause actions recorded
-     * @return count Number of unpause actions
-     */
     function getUnpauseActionCount() external view returns (uint256 count) {
         return unpauseActions.length;
     }
     
-    /**
-     * @dev Gets details of a specific pause action
-     * @param index Index of the pause action
-     * @return action The pause action details
-     */
     function getPauseAction(uint256 index) 
         external 
         view 
@@ -320,11 +195,6 @@ contract EducPause is AccessControl, Pausable, IEducPause {
         return pauseActions[index];
     }
     
-    /**
-     * @dev Gets details of a specific unpause action
-     * @param index Index of the unpause action
-     * @return action The unpause action details
-     */
     function getUnpauseAction(uint256 index)
         external
         view
@@ -332,5 +202,24 @@ contract EducPause is AccessControl, Pausable, IEducPause {
     {
         require(index < unpauseActions.length, "EducPause: Index out of bounds");
         return unpauseActions[index];
+    }
+
+    function _recordPauseAction(uint32 flags, bool isGlobal, string memory reason) private {
+        pauseActions.push(PauseTypes.PauseAction({
+            authority: msg.sender,
+            flags: flags,
+            isGlobal: isGlobal,
+            timestamp: block.timestamp,
+            reason: reason
+        }));
+    }
+
+    function _recordUnpauseAction(uint32 flags, bool isGlobal) private {
+        unpauseActions.push(PauseTypes.UnpauseAction({
+            authority: msg.sender,
+            unsetFlags: flags,
+            isGlobal: isGlobal,
+            timestamp: block.timestamp
+        }));
     }
 }

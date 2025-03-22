@@ -45,14 +45,28 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         external
         initializer
     {
-        require(_token != address(0), "EducVesting: Token cannot be zero address");
-        require(_treasury != address(0), "EducVesting: Treasury cannot be zero address");
-        require(_admin != address(0), "EducVesting: Admin cannot be zero address");
+        _validateInitializeParams(_token, _treasury, _admin);
 
         token = IERC20(_token);
         treasury = _treasury;
         vestingSchedulesCount = 0;
 
+        _setupInitialRoles(_admin);
+    }
+
+    /**
+     * @dev Validates initialize parameters
+     */
+    function _validateInitializeParams(address _token, address _treasury, address _admin) private pure {
+        require(_token != address(0), "EducVesting: Token cannot be zero address");
+        require(_treasury != address(0), "EducVesting: Treasury cannot be zero address");
+        require(_admin != address(0), "EducVesting: Admin cannot be zero address");
+    }
+
+    /**
+     * @dev Sets up initial roles for the contract
+     */
+    function _setupInitialRoles(address _admin) private {
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(EducRoles.ADMIN_ROLE, _admin);
         _grantRole(EducRoles.PAUSER_ROLE, _admin);
@@ -87,13 +101,6 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     
     /**
      * @dev Legacy method for compatibility - creates a linear vesting schedule
-     * @param _beneficiary Recipient of vested tokens
-     * @param _totalAmount Total amount of tokens
-     * @param _startTime Schedule start time
-     * @param _duration Duration in seconds
-     * @param _revocable Whether the schedule can be revoked
-     * @param _metadata Additional metadata hash
-     * @return vestingScheduleId The ID of the created schedule
      */
     function createLinearVesting(
         address _beneficiary,
@@ -154,13 +161,6 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     
     /**
      * @dev Legacy method for compatibility - creates a cliff vesting schedule
-     * @param _beneficiary Recipient of vested tokens
-     * @param _totalAmount Total amount of tokens
-     * @param _startTime Schedule start time
-     * @param _cliffDuration Cliff duration in seconds
-     * @param _revocable Whether the schedule can be revoked
-     * @param _metadata Additional metadata hash
-     * @return vestingScheduleId The ID of the created schedule
      */
     function createCliffVesting(
         address _beneficiary,
@@ -205,7 +205,7 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         nonReentrant
         returns (bytes32 vestingScheduleId)
     {
-        require(params.cliffDuration < params.duration, "EducVesting: Cliff must be shorter than duration");
+        _validateHybridVestingParams(params.cliffDuration, params.duration);
         
         return _createVestingSchedule(
             params.beneficiary,
@@ -223,14 +223,6 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     
     /**
      * @dev Legacy method for compatibility - creates a hybrid vesting schedule
-     * @param _beneficiary Recipient of vested tokens
-     * @param _totalAmount Total amount of tokens
-     * @param _startTime Schedule start time
-     * @param _duration Total duration in seconds
-     * @param _cliffDuration Cliff duration in seconds
-     * @param _revocable Whether the schedule can be revoked
-     * @param _metadata Additional metadata hash
-     * @return vestingScheduleId The ID of the created schedule
      */
     function createHybridVesting(
         address _beneficiary,
@@ -248,7 +240,7 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         nonReentrant
         returns (bytes32 vestingScheduleId)
     {
-        require(_cliffDuration < _duration, "EducVesting: Cliff must be shorter than duration");
+        _validateHybridVestingParams(_cliffDuration, _duration);
         
         return _createVestingSchedule(
             _beneficiary,
@@ -265,6 +257,13 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     }
     
     /**
+     * @dev Validates hybrid vesting parameters
+     */
+    function _validateHybridVestingParams(uint256 _cliffDuration, uint256 _duration) private pure {
+        require(_cliffDuration < _duration, "EducVesting: Cliff must be shorter than duration");
+    }
+    
+    /**
      * @dev Creates a milestone-based vesting schedule with structured parameters
      * @param params Milestone vesting parameters
      * @return vestingScheduleId The ID of the created schedule
@@ -277,7 +276,7 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         nonReentrant
         returns (bytes32 vestingScheduleId)
     {
-        require(params.milestoneCount > 0, "EducVesting: Milestone count must be positive");
+        _validateMilestoneParams(params.milestoneCount);
         
         return _createVestingSchedule(
             params.beneficiary,
@@ -295,14 +294,6 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     
     /**
      * @dev Legacy method for compatibility - creates a milestone-based vesting schedule
-     * @param _beneficiary Recipient of vested tokens
-     * @param _totalAmount Total amount of tokens
-     * @param _startTime Schedule start time
-     * @param _duration Maximum duration in seconds
-     * @param _milestoneCount Number of required milestones
-     * @param _revocable Whether the schedule can be revoked
-     * @param _metadata Additional metadata hash
-     * @return vestingScheduleId The ID of the created schedule
      */
     function createMilestoneVesting(
         address _beneficiary,
@@ -320,7 +311,7 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         nonReentrant
         returns (bytes32 vestingScheduleId)
     {
-        require(_milestoneCount > 0, "EducVesting: Milestone count must be positive");
+        _validateMilestoneParams(_milestoneCount);
         
         return _createVestingSchedule(
             _beneficiary,
@@ -334,6 +325,13 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
             VestingTypes.VestingType.Milestone,
             _metadata
         );
+    }
+    
+    /**
+     * @dev Validates milestone parameters
+     */
+    function _validateMilestoneParams(uint32 _milestoneCount) private pure {
+        require(_milestoneCount > 0, "EducVesting: Milestone count must be positive");
     }
     
     /**
@@ -355,51 +353,36 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         internal
         returns (bytes32 vestingScheduleId)
     {
-        require(_beneficiary != address(0), "EducVesting: Beneficiary cannot be zero address");
-        require(_totalAmount > 0, "EducVesting: Amount must be greater than zero");
-        require(_duration > 0, "EducVesting: Duration must be greater than zero");
-        
-        // For future schedules, start time must be in the future
-        if (_startTime == 0) {
-            _startTime = block.timestamp;
-        } else {
-            require(_startTime >= block.timestamp, "EducVesting: Start time must be in the future");
-        }
+        _validateVestingScheduleParams(_beneficiary, _totalAmount, _duration);
+        _startTime = _validateAndNormalizeStartTime(_startTime);
 
         // Create schedule ID
-        vestingScheduleId = keccak256(
-            abi.encodePacked(
-                _beneficiary,
-                _totalAmount,
-                _startTime,
-                _duration,
-                _cliffDuration,
-                _vestingType,
-                vestingSchedulesCount
-            )
+        vestingScheduleId = _generateScheduleId(
+            _beneficiary, 
+            _totalAmount, 
+            _startTime, 
+            _duration,
+            _cliffDuration, 
+            _vestingType
         );
 
         // Store the schedule
-        vestingSchedules[vestingScheduleId] = VestingTypes.VestingSchedule({
-            beneficiary: _beneficiary,
-            totalAmount: _totalAmount,
-            released: 0,
-            startTime: _startTime,
-            duration: _duration,
-            cliffDuration: _cliffDuration,
-            milestoneCount: _milestoneCount,
-            milestonesReached: _milestonesReached,
-            revocable: _revocable,
-            revoked: false,
-            vestingType: _vestingType,
-            metadata: _metadata
-        });
+        _storeVestingSchedule(
+            vestingScheduleId,
+            _beneficiary,
+            _totalAmount,
+            _startTime,
+            _duration,
+            _cliffDuration,
+            _milestoneCount,
+            _milestonesReached,
+            _revocable,
+            _vestingType,
+            _metadata
+        );
 
         // Track schedules by holder
-        uint256 holderVestingCount = holdersVestingCount[_beneficiary];
-        holderVestingSchedules[_beneficiary][holderVestingCount] = vestingScheduleId;
-        holdersVestingCount[_beneficiary] = holderVestingCount + 1;
-        vestingSchedulesCount++;
+        _trackScheduleForHolder(_beneficiary, vestingScheduleId);
 
         // Transfer tokens to this contract
         token.safeTransferFrom(msg.sender, address(this), _totalAmount);
@@ -417,6 +400,98 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     }
 
     /**
+     * @dev Validates basic vesting schedule parameters
+     */
+    function _validateVestingScheduleParams(
+        address _beneficiary, 
+        uint256 _totalAmount, 
+        uint256 _duration
+    ) private pure {
+        require(_beneficiary != address(0), "EducVesting: Beneficiary cannot be zero address");
+        require(_totalAmount > 0, "EducVesting: Amount must be greater than zero");
+        require(_duration > 0, "EducVesting: Duration must be greater than zero");
+    }
+
+    /**
+     * @dev Validates and normalizes start time
+     */
+    function _validateAndNormalizeStartTime(uint256 _startTime) private view returns (uint256) {
+        // For future schedules, start time must be in the future
+        if (_startTime == 0) {
+            return block.timestamp;
+        } else {
+            require(_startTime >= block.timestamp, "EducVesting: Start time must be in the future");
+            return _startTime;
+        }
+    }
+
+    /**
+     * @dev Generates a unique schedule ID
+     */
+    function _generateScheduleId(
+        address _beneficiary,
+        uint256 _totalAmount,
+        uint256 _startTime,
+        uint256 _duration,
+        uint256 _cliffDuration,
+        VestingTypes.VestingType _vestingType
+    ) private view returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                _beneficiary,
+                _totalAmount,
+                _startTime,
+                _duration,
+                _cliffDuration,
+                _vestingType,
+                vestingSchedulesCount
+            )
+        );
+    }
+
+    /**
+     * @dev Stores a vesting schedule
+     */
+    function _storeVestingSchedule(
+        bytes32 _vestingScheduleId,
+        address _beneficiary,
+        uint256 _totalAmount,
+        uint256 _startTime,
+        uint256 _duration,
+        uint256 _cliffDuration,
+        uint32 _milestoneCount,
+        uint32 _milestonesReached,
+        bool _revocable,
+        VestingTypes.VestingType _vestingType,
+        bytes32 _metadata
+    ) private {
+        vestingSchedules[_vestingScheduleId] = VestingTypes.VestingSchedule({
+            beneficiary: _beneficiary,
+            totalAmount: _totalAmount,
+            released: 0,
+            startTime: _startTime,
+            duration: _duration,
+            cliffDuration: _cliffDuration,
+            milestoneCount: _milestoneCount,
+            milestonesReached: _milestonesReached,
+            revocable: _revocable,
+            revoked: false,
+            vestingType: _vestingType,
+            metadata: _metadata
+        });
+    }
+
+    /**
+     * @dev Tracks a schedule for a holder
+     */
+    function _trackScheduleForHolder(address _beneficiary, bytes32 _vestingScheduleId) private {
+        uint256 holderVestingCount = holdersVestingCount[_beneficiary];
+        holderVestingSchedules[_beneficiary][holderVestingCount] = _vestingScheduleId;
+        holdersVestingCount[_beneficiary] = holderVestingCount + 1;
+        vestingSchedulesCount++;
+    }
+
+    /**
      * @dev Releases vested tokens for the caller
      * @param vestingScheduleId The vesting schedule ID
      */
@@ -428,21 +503,24 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     {
         VestingTypes.VestingSchedule storage schedule = vestingSchedules[vestingScheduleId];
         
-        require(schedule.beneficiary == msg.sender, "EducVesting: Only beneficiary can release");
-        require(!schedule.revoked, "EducVesting: Schedule has been revoked");
+        _validateCallerIsBeneficiary(schedule.beneficiary);
+        _validateScheduleNotRevoked(schedule);
         
-        uint256 releasable = _computeReleasableAmount(schedule);
-        require(releasable > 0, "EducVesting: No tokens are due for release");
-        
-        schedule.released += releasable;
-        
-        token.safeTransfer(schedule.beneficiary, releasable);
-        
-        emit VestingEvents.VestingScheduleReleased(
-            vestingScheduleId,
-            schedule.beneficiary,
-            releasable
-        );
+        _releaseTokens(vestingScheduleId, schedule);
+    }
+
+    /**
+     * @dev Validates that caller is the beneficiary
+     */
+    function _validateCallerIsBeneficiary(address _beneficiary) private view {
+        require(_beneficiary == msg.sender, "EducVesting: Only beneficiary can release");
+    }
+
+    /**
+     * @dev Validates that schedule is not revoked
+     */
+    function _validateScheduleNotRevoked(VestingTypes.VestingSchedule storage _schedule) private view {
+        require(!_schedule.revoked, "EducVesting: Schedule has been revoked");
     }
 
     /**
@@ -458,18 +536,25 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     {
         VestingTypes.VestingSchedule storage schedule = vestingSchedules[vestingScheduleId];
         
-        require(!schedule.revoked, "EducVesting: Schedule has been revoked");
+        _validateScheduleNotRevoked(schedule);
         
-        uint256 releasable = _computeReleasableAmount(schedule);
+        _releaseTokens(vestingScheduleId, schedule);
+    }
+
+    /**
+     * @dev Releases tokens for a schedule
+     */
+    function _releaseTokens(bytes32 _vestingScheduleId, VestingTypes.VestingSchedule storage _schedule) private {
+        uint256 releasable = _computeReleasableAmount(_schedule);
         require(releasable > 0, "EducVesting: No tokens are due for release");
         
-        schedule.released += releasable;
+        _schedule.released += releasable;
         
-        token.safeTransfer(schedule.beneficiary, releasable);
+        token.safeTransfer(_schedule.beneficiary, releasable);
         
         emit VestingEvents.VestingScheduleReleased(
-            vestingScheduleId,
-            schedule.beneficiary,
+            _vestingScheduleId,
+            _schedule.beneficiary,
             releasable
         );
     }
@@ -487,35 +572,71 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     {
         VestingTypes.VestingSchedule storage schedule = vestingSchedules[vestingScheduleId];
         
-        require(schedule.revocable, "EducVesting: Schedule is not revocable");
-        require(!schedule.revoked, "EducVesting: Schedule already revoked");
+        _validateScheduleRevocable(schedule);
+        _validateScheduleNotRevoked(schedule);
         
-        uint256 releasable = _computeReleasableAmount(schedule);
-        uint256 unreleased = schedule.totalAmount - schedule.released - releasable;
+        _performRevocation(vestingScheduleId, schedule);
+    }
+
+    /**
+     * @dev Validates that schedule is revocable
+     */
+    function _validateScheduleRevocable(VestingTypes.VestingSchedule storage _schedule) private view {
+        require(_schedule.revocable, "EducVesting: Schedule is not revocable");
+    }
+
+    /**
+     * @dev Performs the revocation of a vesting schedule
+     */
+    function _performRevocation(bytes32 _vestingScheduleId, VestingTypes.VestingSchedule storage _schedule) private {
+        uint256 releasable = _computeReleasableAmount(_schedule);
+        uint256 unreleased = _schedule.totalAmount - _schedule.released - releasable;
         
         // Mark as revoked
-        schedule.revoked = true;
+        _schedule.revoked = true;
         
-        // Transfer releasable tokens to beneficiary
-        if (releasable > 0) {
-            schedule.released += releasable;
-            token.safeTransfer(schedule.beneficiary, releasable);
-            
-            emit VestingEvents.VestingScheduleReleased(
-                vestingScheduleId,
-                schedule.beneficiary,
-                releasable
-            );
-        }
+        // Release vested tokens to beneficiary
+        _releaseVestedTokensOnRevocation(_vestingScheduleId, _schedule, releasable);
         
         // Transfer unreleased tokens to treasury
-        if (unreleased > 0) {
-            token.safeTransfer(treasury, unreleased);
+        _transferUnreleasedTokensToTreasury(_vestingScheduleId, _schedule, unreleased);
+    }
+
+    /**
+     * @dev Releases vested tokens on revocation
+     */
+    function _releaseVestedTokensOnRevocation(
+        bytes32 _vestingScheduleId, 
+        VestingTypes.VestingSchedule storage _schedule, 
+        uint256 _releasable
+    ) private {
+        if (_releasable > 0) {
+            _schedule.released += _releasable;
+            token.safeTransfer(_schedule.beneficiary, _releasable);
+            
+            emit VestingEvents.VestingScheduleReleased(
+                _vestingScheduleId,
+                _schedule.beneficiary,
+                _releasable
+            );
+        }
+    }
+
+    /**
+     * @dev Transfers unreleased tokens to treasury on revocation
+     */
+    function _transferUnreleasedTokensToTreasury(
+        bytes32 _vestingScheduleId, 
+        VestingTypes.VestingSchedule storage _schedule, 
+        uint256 _unreleased
+    ) private {
+        if (_unreleased > 0) {
+            token.safeTransfer(treasury, _unreleased);
             
             emit VestingEvents.VestingScheduleRevoked(
-                vestingScheduleId,
-                schedule.beneficiary,
-                unreleased
+                _vestingScheduleId,
+                _schedule.beneficiary,
+                _unreleased
             );
         }
     }
@@ -533,25 +654,39 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
     {
         VestingTypes.VestingSchedule storage schedule = vestingSchedules[vestingScheduleId];
         
-        require(schedule.vestingType == VestingTypes.VestingType.Milestone, "EducVesting: Not a milestone schedule");
-        require(!schedule.revoked, "EducVesting: Schedule has been revoked");
-        require(schedule.milestonesReached < schedule.milestoneCount, "EducVesting: All milestones completed");
+        _validateMilestoneSchedule(schedule);
         
+        _completeMilestone(vestingScheduleId, schedule);
+    }
+
+    /**
+     * @dev Validates milestone schedule
+     */
+    function _validateMilestoneSchedule(VestingTypes.VestingSchedule storage _schedule) private view {
+        require(_schedule.vestingType == VestingTypes.VestingType.Milestone, "EducVesting: Not a milestone schedule");
+        require(!_schedule.revoked, "EducVesting: Schedule has been revoked");
+        require(_schedule.milestonesReached < _schedule.milestoneCount, "EducVesting: All milestones completed");
+    }
+
+    /**
+     * @dev Completes a milestone and releases tokens
+     */
+    function _completeMilestone(bytes32 _vestingScheduleId, VestingTypes.VestingSchedule storage _schedule) private {
         // Increment milestone count
-        schedule.milestonesReached++;
+        _schedule.milestonesReached++;
         
         // Calculate release amount per milestone
-        uint256 amountPerMilestone = schedule.totalAmount / schedule.milestoneCount;
+        uint256 amountPerMilestone = _schedule.totalAmount / _schedule.milestoneCount;
         
         // Release tokens
-        schedule.released += amountPerMilestone;
+        _schedule.released += amountPerMilestone;
         
-        token.safeTransfer(schedule.beneficiary, amountPerMilestone);
+        token.safeTransfer(_schedule.beneficiary, amountPerMilestone);
         
         emit VestingEvents.MilestoneCompleted(
-            vestingScheduleId,
-            schedule.beneficiary,
-            schedule.milestonesReached,
+            _vestingScheduleId,
+            _schedule.beneficiary,
+            _schedule.milestonesReached,
             amountPerMilestone
         );
     }
@@ -565,12 +700,19 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         override
         onlyRole(EducRoles.ADMIN_ROLE)
     {
-        require(_treasury != address(0), "EducVesting: Treasury cannot be zero address");
+        _validateTreasuryAddress(_treasury);
         
         address oldTreasury = treasury;
         treasury = _treasury;
         
         emit VestingEvents.TreasuryUpdated(oldTreasury, _treasury);
+    }
+    
+    /**
+     * @dev Validates treasury address
+     */
+    function _validateTreasuryAddress(address _treasury) private pure {
+        require(_treasury != address(0), "EducVesting: Treasury cannot be zero address");
     }
     
     /**
@@ -584,28 +726,46 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         nonReentrant
         whenNotPaused
     {
-        require(newBeneficiary != address(0), "EducVesting: New beneficiary cannot be zero address");
+        _validateNewBeneficiary(newBeneficiary);
         
         VestingTypes.VestingSchedule storage schedule = vestingSchedules[vestingScheduleId];
-        require(schedule.beneficiary == msg.sender, "EducVesting: Only beneficiary can transfer");
-        require(!schedule.revoked, "EducVesting: Schedule has been revoked");
+        _validateCallerIsBeneficiary(schedule.beneficiary);
+        _validateScheduleNotRevoked(schedule);
         
-        address previousBeneficiary = schedule.beneficiary;
-        schedule.beneficiary = newBeneficiary;
+        _transferSchedule(vestingScheduleId, schedule, newBeneficiary);
+    }
+
+    /**
+     * @dev Validates new beneficiary address
+     */
+    function _validateNewBeneficiary(address _newBeneficiary) private pure {
+        require(_newBeneficiary != address(0), "EducVesting: New beneficiary cannot be zero address");
+    }
+
+    /**
+     * @dev Transfers schedule to new beneficiary
+     */
+    function _transferSchedule(
+        bytes32 _vestingScheduleId, 
+        VestingTypes.VestingSchedule storage _schedule, 
+        address _newBeneficiary
+    ) private {
+        address previousBeneficiary = _schedule.beneficiary;
+        _schedule.beneficiary = _newBeneficiary;
         
         // Update holder tracking
-        uint256 holderVestingCount = holdersVestingCount[newBeneficiary];
-        holderVestingSchedules[newBeneficiary][holderVestingCount] = vestingScheduleId;
-        holdersVestingCount[newBeneficiary] = holderVestingCount + 1;
+        uint256 holderVestingCount = holdersVestingCount[_newBeneficiary];
+        holderVestingSchedules[_newBeneficiary][holderVestingCount] = _vestingScheduleId;
+        holdersVestingCount[_newBeneficiary] = holderVestingCount + 1;
         
         // Note: We don't remove from the previous beneficiary's mapping,
         // as this would require extensive remapping. The schedule ID remains
         // valid, but beneficiary is updated.
         
         emit VestingEvents.VestingScheduleTransferred(
-            vestingScheduleId,
+            _vestingScheduleId,
             previousBeneficiary,
-            newBeneficiary
+            _newBeneficiary
         );
     }
 
@@ -646,36 +806,71 @@ contract EducVestingCloneable is AccessControl, Pausable, ReentrancyGuard, Initi
         uint256 vestedAmount;
         
         if (_schedule.vestingType == VestingTypes.VestingType.Linear) {
-            // Linear vesting calculation
-            if (currentTime >= _schedule.startTime + _schedule.duration) {
-                vestedAmount = _schedule.totalAmount;
-            } else {
-                vestedAmount = _schedule.totalAmount * (currentTime - _schedule.startTime) / _schedule.duration;
-            }
+            vestedAmount = _calculateLinearVesting(_schedule, currentTime);
         } else if (_schedule.vestingType == VestingTypes.VestingType.Cliff) {
-            // Cliff vesting calculation
-            if (currentTime >= _schedule.startTime + _schedule.cliffDuration) {
-                vestedAmount = _schedule.totalAmount;
-            } else {
-                vestedAmount = 0;
-            }
+            vestedAmount = _calculateCliffVesting(_schedule, currentTime);
         } else if (_schedule.vestingType == VestingTypes.VestingType.Hybrid) {
-            // Hybrid vesting calculation (cliff + linear)
-            if (currentTime < _schedule.startTime + _schedule.cliffDuration) {
-                vestedAmount = 0;
-            } else if (currentTime >= _schedule.startTime + _schedule.duration) {
-                vestedAmount = _schedule.totalAmount;
-            } else {
-                uint256 timeAfterCliff = currentTime - (_schedule.startTime + _schedule.cliffDuration);
-                uint256 linearDuration = _schedule.duration - _schedule.cliffDuration;
-                vestedAmount = _schedule.totalAmount * timeAfterCliff / linearDuration;
-            }
+            vestedAmount = _calculateHybridVesting(_schedule, currentTime);
         } else if (_schedule.vestingType == VestingTypes.VestingType.Milestone) {
-            // Milestone vesting calculation
-            vestedAmount = _schedule.totalAmount * _schedule.milestonesReached / _schedule.milestoneCount;
+            vestedAmount = _calculateMilestoneVesting(_schedule);
         }
         
         return vestedAmount - _schedule.released;
+    }
+
+    /**
+     * @dev Calculates vested amount for linear vesting
+     */
+    function _calculateLinearVesting(
+        VestingTypes.VestingSchedule memory _schedule, 
+        uint256 _currentTime
+    ) private pure returns (uint256) {
+        if (_currentTime >= _schedule.startTime + _schedule.duration) {
+            return _schedule.totalAmount;
+        } else {
+            return _schedule.totalAmount * (_currentTime - _schedule.startTime) / _schedule.duration;
+        }
+    }
+
+    /**
+     * @dev Calculates vested amount for cliff vesting
+     */
+    function _calculateCliffVesting(
+        VestingTypes.VestingSchedule memory _schedule, 
+        uint256 _currentTime
+    ) private pure returns (uint256) {
+        if (_currentTime >= _schedule.startTime + _schedule.cliffDuration) {
+            return _schedule.totalAmount;
+        } else {
+            return 0;
+        }
+    }
+
+    /**
+     * @dev Calculates vested amount for hybrid vesting
+     */
+    function _calculateHybridVesting(
+        VestingTypes.VestingSchedule memory _schedule, 
+        uint256 _currentTime
+    ) private pure returns (uint256) {
+        if (_currentTime < _schedule.startTime + _schedule.cliffDuration) {
+            return 0;
+        } else if (_currentTime >= _schedule.startTime + _schedule.duration) {
+            return _schedule.totalAmount;
+        } else {
+            uint256 timeAfterCliff = _currentTime - (_schedule.startTime + _schedule.cliffDuration);
+            uint256 linearDuration = _schedule.duration - _schedule.cliffDuration;
+            return _schedule.totalAmount * timeAfterCliff / linearDuration;
+        }
+    }
+
+    /**
+     * @dev Calculates vested amount for milestone vesting
+     */
+    function _calculateMilestoneVesting(
+        VestingTypes.VestingSchedule memory _schedule
+    ) private pure returns (uint256) {
+        return _schedule.totalAmount * _schedule.milestonesReached / _schedule.milestoneCount;
     }
 
     /**

@@ -87,14 +87,33 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
      * @param params Course creation parameters to validate
      */
     function _validateCourseCreation(CourseTypes.CourseCreationParams memory params) private view {
-        require(educatorContract.isActiveEducator(msg.sender), "EducCourse: Caller not an active educator");
-        require(bytes(params.courseId).length > 0 && bytes(params.courseId).length <= SystemConstants.MAX_COURSE_ID_LENGTH, 
+        _validateEducator(msg.sender);
+        _validateCourseId(params.courseId);
+        _validateCourseName(params.courseName);
+        _validateRewardAmount(params.rewardAmount);
+        _validateCourseUniqueness(msg.sender, params.courseId);
+    }
+
+    function _validateEducator(address educator) private view {
+        require(educatorContract.isActiveEducator(educator), "EducCourse: Caller not an active educator");
+    }
+
+    function _validateCourseId(string memory courseId) private pure {
+        require(bytes(courseId).length > 0 && bytes(courseId).length <= SystemConstants.MAX_COURSE_ID_LENGTH, 
             "EducCourse: Invalid course ID");
-        require(bytes(params.courseName).length > 0 && bytes(params.courseName).length <= SystemConstants.MAX_COURSE_NAME_LENGTH, 
+    }
+
+    function _validateCourseName(string memory courseName) private pure {
+        require(bytes(courseName).length > 0 && bytes(courseName).length <= SystemConstants.MAX_COURSE_NAME_LENGTH, 
             "EducCourse: Invalid course name");
-        require(params.rewardAmount > 0, "EducCourse: Invalid reward amount");
-        
-        bytes32 courseKey = keccak256(abi.encodePacked(msg.sender, params.courseId));
+    }
+
+    function _validateRewardAmount(uint256 rewardAmount) private pure {
+        require(rewardAmount > 0, "EducCourse: Invalid reward amount");
+    }
+
+    function _validateCourseUniqueness(address educator, string memory courseId) private view {
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
         require(courses[courseKey].educator == address(0), "EducCourse: Course already exists");
     }
     
@@ -103,7 +122,7 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
      * @param params Course creation parameters
      */
     function _createCourse(CourseTypes.CourseCreationParams memory params) private {
-        bytes32 courseKey = keccak256(abi.encodePacked(msg.sender, params.courseId));
+        bytes32 courseKey = _generateCourseKey(msg.sender, params.courseId);
         uint256 currentTime = block.timestamp;
 
         CourseTypes.Course memory newCourse = CourseTypes.Course({
@@ -188,91 +207,106 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
      * @param params Course update parameters to validate
      */
     function _validateCourseUpdate(CourseTypes.CourseUpdateParams memory params) private view {
-        require(bytes(params.changeDescription).length <= SystemConstants.MAX_CHANGE_DESCRIPTION_LENGTH, 
+        _validateChangeDescription(params.changeDescription);
+        _validateCourseOwnership(msg.sender, params.courseId);
+    }
+
+    function _validateChangeDescription(string memory changeDescription) private pure {
+        require(bytes(changeDescription).length <= SystemConstants.MAX_CHANGE_DESCRIPTION_LENGTH, 
             "EducCourse: Change description too long");
-        
-        bytes32 courseKey = keccak256(abi.encodePacked(msg.sender, params.courseId));
-        require(courses[courseKey].educator == msg.sender, "EducCourse: Course not found or not owner");
+    }
+
+    function _validateCourseOwnership(address educator, string memory courseId) private view {
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
+        require(courses[courseKey].educator == educator, "EducCourse: Course not found or not owner");
     }
     
     /**
      * @dev Internal implementation of course update
      * @param params Course update parameters
      */
-   function _updateCourse(CourseTypes.CourseUpdateParams memory params) private {
-    bytes32 courseKey = keccak256(abi.encodePacked(msg.sender, params.courseId));
-    CourseTypes.Course storage course = courses[courseKey];
-    
-    // Store previous values for history tracking
-    string memory previousName = course.courseName;
-    uint256 previousReward = course.rewardAmount;
-    bool previousActive = course.isActive;
-    bytes32 previousMetadataHash = course.metadataHash;
-    
-    bool updated = false;
-    
-    if (bytes(params.courseName).length > 0 && bytes(params.courseName).length <= SystemConstants.MAX_COURSE_NAME_LENGTH) {
-        course.courseName = params.courseName;
-        updated = true;
-    }
-    
-    if (params.rewardAmount > 0) {
-        course.rewardAmount = params.rewardAmount;
-        updated = true;
-    }
-    
-    course.isActive = params.isActive;
-    
-    // Add specific check for metadata hash changes
-    if (params.metadataHash != bytes32(0)) {
-        // Emit specific event for metadata changes
-        emit CourseEvents.CourseMetadataUpdated(
-            params.courseId,
-            msg.sender,
-            course.metadataHash,
-            params.metadataHash,
-            block.timestamp
-        );
+    function _updateCourse(CourseTypes.CourseUpdateParams memory params) private {
+        bytes32 courseKey = _generateCourseKey(msg.sender, params.courseId);
+        CourseTypes.Course storage course = courses[courseKey];
         
-        course.metadataHash = params.metadataHash;
-        updated = true;
+        _storePreviousValues(course, params, courseKey);
+        _applyCourseUpdates(course, params);
     }
-    
-    if (updated || previousActive != params.isActive) {
-        uint256 currentTime = block.timestamp;
-        course.lastUpdatedAt = currentTime;
-        course.version++;
-        
-        CourseTypes.CourseHistory memory history = CourseTypes.CourseHistory({
-            courseId: params.courseId,
-            educator: msg.sender,
-            version: course.version,
-            previousName: previousName,
-            previousReward: previousReward,
-            previousActive: previousActive,
-            previousMetadataHash: previousMetadataHash,
-            updatedBy: msg.sender,
-            updatedAt: currentTime,
-            changeDescription: params.changeDescription
-        });
-        
-        courseHistories[courseKey].push(history);
-        
-        emit CourseEvents.CourseUpdated(
-            params.courseId,
-            msg.sender,
-            course.version,
-            previousName,
-            course.courseName,
-            previousReward,
-            course.rewardAmount,
-            previousActive,
-            course.isActive,
-            msg.sender,
-            currentTime
-        );
+
+    function _storePreviousValues(CourseTypes.Course storage course, CourseTypes.CourseUpdateParams memory params, bytes32 courseKey ) private {
+        string memory previousName = course.courseName;
+        uint256 previousReward = course.rewardAmount;
+        bool previousActive = course.isActive;
+        bytes32 previousMetadataHash = course.metadataHash;
+
+        if (_isCourseUpdated(params) || previousActive != params.isActive) {
+            uint256 currentTime = block.timestamp;
+            course.lastUpdatedAt = currentTime;
+            course.version++;
+            
+            CourseTypes.CourseHistory memory history = CourseTypes.CourseHistory({
+                courseId: params.courseId,
+                educator: msg.sender,
+                version: course.version,
+                previousName: previousName,
+                previousReward: previousReward,
+                previousActive: previousActive,
+                previousMetadataHash: previousMetadataHash,
+                updatedBy: msg.sender,
+                updatedAt: currentTime,
+                changeDescription: params.changeDescription
+            });
+            
+            courseHistories[courseKey].push(history);
+            
+            emit CourseEvents.CourseUpdated(
+                params.courseId,
+                msg.sender,
+                course.version,
+                previousName,
+                course.courseName,
+                previousReward,
+                course.rewardAmount,
+                previousActive,
+                course.isActive,
+                msg.sender,
+                currentTime
+            );
+        }
     }
-}
+
+    function _applyCourseUpdates(CourseTypes.Course storage course, CourseTypes.CourseUpdateParams memory params) private {
+        bool updated = false;
+        
+        if (bytes(params.courseName).length > 0 && bytes(params.courseName).length <= SystemConstants.MAX_COURSE_NAME_LENGTH) {
+            course.courseName = params.courseName;
+            updated = true;
+        }
+        
+        if (params.rewardAmount > 0) {
+            course.rewardAmount = params.rewardAmount;
+            updated = true;
+        }
+        
+        course.isActive = params.isActive;
+        
+        if (params.metadataHash != bytes32(0)) {
+            emit CourseEvents.CourseMetadataUpdated(
+                params.courseId,
+                msg.sender,
+                course.metadataHash,
+                params.metadataHash,
+                block.timestamp
+            );
+            
+            course.metadataHash = params.metadataHash;
+            updated = true;
+        }
+    }
+
+    function _isCourseUpdated(CourseTypes.CourseUpdateParams memory params) private pure returns (bool) {
+        return bytes(params.courseName).length > 0 || params.rewardAmount > 0 || params.metadataHash != bytes32(0);
+    }
 
     /**
      * @dev Increments course completion count with detailed tracking
@@ -285,7 +319,7 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
         onlyRole(EducRoles.ADMIN_ROLE) 
         nonReentrant 
     {
-        bytes32 courseKey = keccak256(abi.encodePacked(educator, courseId));
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
         require(courses[courseKey].educator == educator, "EducCourse: Course not found");
         
         CourseTypes.Course storage courseData = courses[courseKey];
@@ -312,7 +346,7 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
         override
         returns (CourseTypes.Course memory course)
     {
-        bytes32 courseKey = keccak256(abi.encodePacked(educator, courseId));
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
         require(courses[courseKey].educator != address(0), "EducCourse: Course not found");
         
         return courses[courseKey];
@@ -340,7 +374,7 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
             uint32
         ) 
     {
-        bytes32 courseKey = keccak256(abi.encodePacked(educator, courseId));
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
         CourseTypes.Course storage course = courses[courseKey];
         require(course.educator != address(0), "EducCourse: Course not found");
         
@@ -370,7 +404,7 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
         override 
         returns (bool active) 
     {
-        bytes32 courseKey = keccak256(abi.encodePacked(educator, courseId));
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
         return courses[courseKey].educator != address(0) && courses[courseKey].isActive;
     }
 
@@ -386,7 +420,7 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
         override 
         returns (uint256 reward) 
     {
-        bytes32 courseKey = keccak256(abi.encodePacked(educator, courseId));
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
         require(courses[courseKey].educator != address(0), "EducCourse: Course not found");
         
         return courses[courseKey].rewardAmount;
@@ -418,7 +452,7 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
         override
         returns (CourseTypes.CourseHistory memory history)
     {
-        bytes32 courseKey = keccak256(abi.encodePacked(educator, courseId));
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
         require(courses[courseKey].educator != address(0), "EducCourse: Course not found");
         
         CourseTypes.CourseHistory[] storage histories = courseHistories[courseKey];
@@ -444,7 +478,7 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
         override
         returns (uint256 count)
     {
-        bytes32 courseKey = keccak256(abi.encodePacked(educator, courseId));
+        bytes32 courseKey = _generateCourseKey(educator, courseId);
         require(courses[courseKey].educator != address(0), "EducCourse: Course not found");
         
         return courseHistories[courseKey].length;
@@ -462,5 +496,15 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
      */
     function unpause() external onlyRole(EducRoles.ADMIN_ROLE) {
         _unpause();
+    }
+
+    /**
+     * @dev Generates a unique course key based on educator and course ID
+     * @param educator Address of the course educator
+     * @param courseId ID of the course
+     * @return courseKey The generated course key
+     */
+    function _generateCourseKey(address educator, string memory courseId) private pure returns (bytes32) {
+        return keccak256(abi.encodePacked(educator, courseId));
     }
 }

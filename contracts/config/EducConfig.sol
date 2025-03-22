@@ -54,7 +54,10 @@ contract EducConfig is AccessControl, Pausable {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(EducRoles.ADMIN_ROLE, admin);
 
-        // Initialize default configuration
+        _initializeDefaultConfig(admin);
+    }
+
+    function _initializeDefaultConfig(address admin) private {
         currentConfig = SystemConfig({
             maxEducators: 1000,
             maxCoursesPerEducator: 100,
@@ -77,6 +80,19 @@ contract EducConfig is AccessControl, Pausable {
         external 
         onlyRole(EducRoles.ADMIN_ROLE)
     {
+        _validateConfigParams(_maxEducators, _maxCoursesPerEducator, _maxMintAmount, _mintCooldownPeriod);
+        _updateConfigParams(_maxEducators, _maxCoursesPerEducator, _maxMintAmount, _mintCooldownPeriod);
+    }
+
+    function _validateConfigParams(
+        uint16 _maxEducators,
+        uint16 _maxCoursesPerEducator,
+        uint256 _maxMintAmount,
+        uint256 _mintCooldownPeriod
+    ) 
+        private 
+        pure 
+    {
         require(
             _maxEducators <= MAX_EDUCATORS_LIMIT && 
             _maxCoursesPerEducator <= MAX_COURSES_LIMIT &&
@@ -84,53 +100,23 @@ contract EducConfig is AccessControl, Pausable {
             _mintCooldownPeriod <= MAX_COOLDOWN_PERIOD,
             "EducConfig: Invalid parameter values"
         );
+    }
 
+    function _updateConfigParams(
+        uint16 _maxEducators,
+        uint16 _maxCoursesPerEducator,
+        uint256 _maxMintAmount,
+        uint256 _mintCooldownPeriod
+    ) 
+        private 
+    {
         SystemConfig memory oldConfig = currentConfig;
         bool configChanged = false;
 
-        if (_maxEducators > 0 && _maxEducators != oldConfig.maxEducators) {
-            currentConfig.maxEducators = _maxEducators;
-            emit ConfigParameterChanged(
-                "maxEducators", 
-                oldConfig.maxEducators, 
-                _maxEducators, 
-                msg.sender
-            );
-            configChanged = true;
-        }
-
-        if (_maxCoursesPerEducator > 0 && _maxCoursesPerEducator != oldConfig.maxCoursesPerEducator) {
-            currentConfig.maxCoursesPerEducator = _maxCoursesPerEducator;
-            emit ConfigParameterChanged(
-                "maxCoursesPerEducator", 
-                oldConfig.maxCoursesPerEducator, 
-                _maxCoursesPerEducator, 
-                msg.sender
-            );
-            configChanged = true;
-        }
-
-        if (_maxMintAmount > 0 && _maxMintAmount != oldConfig.maxMintAmount) {
-            currentConfig.maxMintAmount = _maxMintAmount;
-            emit ConfigParameterChanged(
-                "maxMintAmount", 
-                oldConfig.maxMintAmount, 
-                _maxMintAmount, 
-                msg.sender
-            );
-            configChanged = true;
-        }
-
-        if (_mintCooldownPeriod > 0 && _mintCooldownPeriod != oldConfig.mintCooldownPeriod) {
-            currentConfig.mintCooldownPeriod = _mintCooldownPeriod;
-            emit ConfigParameterChanged(
-                "mintCooldownPeriod", 
-                oldConfig.mintCooldownPeriod, 
-                _mintCooldownPeriod, 
-                msg.sender
-            );
-            configChanged = true;
-        }
+        configChanged = _updateMaxEducators(_maxEducators, oldConfig) || configChanged;
+        configChanged = _updateMaxCoursesPerEducator(_maxCoursesPerEducator, oldConfig) || configChanged;
+        configChanged = _updateMaxMintAmount(_maxMintAmount, oldConfig) || configChanged;
+        configChanged = _updateMintCooldownPeriod(_mintCooldownPeriod, oldConfig) || configChanged;
 
         if (configChanged) {
             currentConfig.lastUpdatedAt = block.timestamp;
@@ -142,6 +128,62 @@ contract EducConfig is AccessControl, Pausable {
                 "SystemConfigUpdate"
             );
         }
+    }
+
+    function _updateMaxEducators(uint16 _maxEducators, SystemConfig memory oldConfig) private returns (bool) {
+        if (_maxEducators > 0 && _maxEducators != oldConfig.maxEducators) {
+            currentConfig.maxEducators = _maxEducators;
+            emit ConfigParameterChanged(
+                "maxEducators", 
+                oldConfig.maxEducators, 
+                _maxEducators, 
+                msg.sender
+            );
+            return true;
+        }
+        return false;
+    }
+
+    function _updateMaxCoursesPerEducator(uint16 _maxCoursesPerEducator, SystemConfig memory oldConfig) private returns (bool) {
+        if (_maxCoursesPerEducator > 0 && _maxCoursesPerEducator != oldConfig.maxCoursesPerEducator) {
+            currentConfig.maxCoursesPerEducator = _maxCoursesPerEducator;
+            emit ConfigParameterChanged(
+                "maxCoursesPerEducator", 
+                oldConfig.maxCoursesPerEducator, 
+                _maxCoursesPerEducator, 
+                msg.sender
+            );
+            return true;
+        }
+        return false;
+    }
+
+    function _updateMaxMintAmount(uint256 _maxMintAmount, SystemConfig memory oldConfig) private returns (bool) {
+        if (_maxMintAmount > 0 && _maxMintAmount != oldConfig.maxMintAmount) {
+            currentConfig.maxMintAmount = _maxMintAmount;
+            emit ConfigParameterChanged(
+                "maxMintAmount", 
+                oldConfig.maxMintAmount, 
+                _maxMintAmount, 
+                msg.sender
+            );
+            return true;
+        }
+        return false;
+    }
+
+    function _updateMintCooldownPeriod(uint256 _mintCooldownPeriod, SystemConfig memory oldConfig) private returns (bool) {
+        if (_mintCooldownPeriod > 0 && _mintCooldownPeriod != oldConfig.mintCooldownPeriod) {
+            currentConfig.mintCooldownPeriod = _mintCooldownPeriod;
+            emit ConfigParameterChanged(
+                "mintCooldownPeriod", 
+                oldConfig.mintCooldownPeriod, 
+                _mintCooldownPeriod, 
+                msg.sender
+            );
+            return true;
+        }
+        return false;
     }
 
     /**

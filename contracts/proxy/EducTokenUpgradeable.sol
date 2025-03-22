@@ -23,12 +23,6 @@ contract EducTokenUpgradeable is
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
-    // Constants
-    uint256 public constant INITIAL_SUPPLY = 10_000_000 * 10**18; // 10 million tokens
-    uint256 public constant MAX_MINT_AMOUNT = 100_000 * 10**18; // 100,000 tokens per transaction
-    uint256 public constant BURN_COOLDOWN_PERIOD = 365 days; // 1 year for token expiration
-    uint256 public constant DAILY_MINT_LIMIT = 1_000 * 10**18; // 1,000 tokens daily limit
-
     // Total counters
     uint256 public totalMinted;
     uint256 public totalBurned;
@@ -40,10 +34,10 @@ contract EducTokenUpgradeable is
     mapping(uint256 => uint256) public dailyMinting; // day number => amount minted
 
     // Role definitions
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    bytes32 public constant EDUCATOR_ROLE = keccak256("EDUCATOR_ROLE");
-    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
-    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 public constant ADMIN_ROLE = EducRoles.ADMIN_ROLE;
+    bytes32 public constant EDUCATOR_ROLE = EducRoles.EDUCATOR_ROLE;
+    bytes32 public constant MINTER_ROLE = EducRoles.MINTER_ROLE;
+    bytes32 public constant UPGRADER_ROLE = EducRoles.UPGRADER_ROLE;
 
     // Events
     event TokensMinted(address indexed to, uint256 amount, address indexed minter);
@@ -83,8 +77,8 @@ contract EducTokenUpgradeable is
         _grantRole(MINTER_ROLE, admin);
         _grantRole(UPGRADER_ROLE, admin);
 
-        _mint(admin, INITIAL_SUPPLY);
-        totalMinted = INITIAL_SUPPLY;
+        _mint(admin, SystemConstants.INITIAL_SUPPLY);
+        totalMinted = SystemConstants.INITIAL_SUPPLY;
     }
 
     /**
@@ -131,14 +125,8 @@ contract EducTokenUpgradeable is
         whenNotPaused 
         nonReentrant 
     {
-        require(to != address(0), "EducTokenUpgradeable: mint to the zero address");
-        require(amount > 0, "EducTokenUpgradeable: mint amount must be positive");
-        require(amount <= MAX_MINT_AMOUNT, "EducTokenUpgradeable: amount exceeds max mint amount");
-        
-        // Track daily minting limits
-        uint256 today = block.timestamp / 1 days;
-        dailyMinting[today] += amount;
-        require(dailyMinting[today] <= DAILY_MINT_LIMIT, "EducTokenUpgradeable: daily mint limit exceeded");
+        _validateMint(to, amount);
+        _trackDailyMinting(amount);
 
         _mint(to, amount);
         totalMinted += amount;
@@ -158,15 +146,8 @@ contract EducTokenUpgradeable is
         whenNotPaused 
         nonReentrant 
     {
-        require(student != address(0), "EducTokenUpgradeable: mint to the zero address");
-        require(amount > 0, "EducTokenUpgradeable: mint amount must be positive");
-        require(amount <= MAX_MINT_AMOUNT, "EducTokenUpgradeable: amount exceeds max mint amount");
-        require(bytes(reason).length > 0, "EducTokenUpgradeable: reason cannot be empty");
-        
-        // Track daily minting limits
-        uint256 today = block.timestamp / 1 days;
-        dailyMinting[today] += amount;
-        require(dailyMinting[today] <= DAILY_MINT_LIMIT, "EducTokenUpgradeable: daily mint limit exceeded");
+        _validateMintReward(student, amount, reason);
+        _trackDailyMinting(amount);
         
         _mint(student, amount);
         totalMinted += amount;
@@ -191,32 +172,12 @@ contract EducTokenUpgradeable is
         whenNotPaused 
         nonReentrant 
     {
-        uint256 studentsLength = students.length;
-        require(
-            studentsLength == amounts.length && 
-            studentsLength == reasons.length,
-            "EducTokenUpgradeable: arrays length mismatch"
-        );
-        require(studentsLength > 0, "EducTokenUpgradeable: empty arrays");
+        _validateBatchMintReward(students, amounts, reasons);
         
-        // Calculate total amount and validate inputs
-        uint256 totalAmount = 0;
-        for (uint256 i = 0; i < studentsLength; i++) {
-            require(students[i] != address(0), "EducTokenUpgradeable: mint to the zero address");
-            require(amounts[i] > 0, "EducTokenUpgradeable: mint amount must be positive");
-            require(amounts[i] <= MAX_MINT_AMOUNT, "EducTokenUpgradeable: amount exceeds max mint amount");
-            require(bytes(reasons[i]).length > 0, "EducTokenUpgradeable: reason cannot be empty");
-            
-            totalAmount += amounts[i];
-        }
+        uint256 totalAmount = _calculateTotalAmount(amounts);
+        _trackDailyMinting(totalAmount);
         
-        // Track daily minting limits
-        uint256 today = block.timestamp / 1 days;
-        dailyMinting[today] += totalAmount;
-        require(dailyMinting[today] <= DAILY_MINT_LIMIT, "EducTokenUpgradeable: daily mint limit exceeded");
-        
-        // Process each student
-        for (uint256 i = 0; i < studentsLength; i++) {
+        for (uint256 i = 0; i < students.length; i++) {
             _mint(students[i], amounts[i]);
             
             emit RewardIssued(students[i], amounts[i], reasons[i]);
@@ -235,8 +196,7 @@ contract EducTokenUpgradeable is
         whenNotPaused 
         nonReentrant 
     {
-        require(amount > 0, "EducTokenUpgradeable: burn amount must be positive");
-        require(balanceOf(_msgSender()) >= amount, "EducTokenUpgradeable: burn amount exceeds balance");
+        _validateBurn(_msgSender(), amount);
 
         _burn(_msgSender(), amount);
         totalBurned += amount;
@@ -256,12 +216,7 @@ contract EducTokenUpgradeable is
         whenNotPaused 
         nonReentrant 
     {
-        require(from != address(0), "EducTokenUpgradeable: burn from the zero address");
-        require(amount > 0, "EducTokenUpgradeable: burn amount must be positive");
-        require(balanceOf(from) >= amount, "EducTokenUpgradeable: burn amount exceeds balance");
-        
-        // Validate account inactivity 
-        require(_isAccountInactive(from), "EducTokenUpgradeable: account is not inactive");
+        _validateBurnFromInactive(from, amount);
         
         _burn(from, amount);
         totalBurned += amount;
@@ -308,17 +263,14 @@ contract EducTokenUpgradeable is
      * @return bool True if the account is inactive and eligible for token expiration
      */
     function _isAccountInactive(address account) internal view returns (bool) {
-        // Admin accounts cannot be considered inactive
         if (hasRole(ADMIN_ROLE, account)) {
             return false;
         }
         
-        // If student contract is not set, accounts cannot be inactive
         if (studentContract == address(0)) {
             return false;
         }
         
-        // Check if this is a registered student
         bytes4 isStudentSelector = bytes4(keccak256("isStudent(address)"));
         (bool success, bytes memory result) = studentContract.staticcall(
             abi.encodeWithSelector(isStudentSelector, account)
@@ -328,7 +280,6 @@ contract EducTokenUpgradeable is
             return false;
         }
         
-        // Get last activity timestamp from student contract
         bytes4 getLastActivitySelector = bytes4(keccak256("getStudentLastActivity(address)"));
         (success, result) = studentContract.staticcall(
             abi.encodeWithSelector(getLastActivitySelector, account)
@@ -340,8 +291,7 @@ contract EducTokenUpgradeable is
         
         uint256 lastActivity = abi.decode(result, (uint256));
         
-        // Account is inactive if no activity for BURN_COOLDOWN_PERIOD (1 year)
-        return lastActivity > 0 && (block.timestamp - lastActivity) > BURN_COOLDOWN_PERIOD;
+        return lastActivity > 0 && (block.timestamp - lastActivity) > SystemConstants.BURN_COOLDOWN_PERIOD;
     }
     
     /**
@@ -361,10 +311,64 @@ contract EducTokenUpgradeable is
         uint256 today = block.timestamp / 1 days;
         uint256 usedToday = dailyMinting[today];
         
-        if (usedToday >= DAILY_MINT_LIMIT) {
+        if (usedToday >= SystemConstants.DAILY_MINT_LIMIT) {
             return 0;
         }
         
-        return DAILY_MINT_LIMIT - usedToday;
+        return SystemConstants.DAILY_MINT_LIMIT - usedToday;
+    }
+
+    // Private helper functions
+
+    function _validateMint(address to, uint256 amount) private pure {
+        require(to != address(0), "EducTokenUpgradeable: mint to the zero address");
+        require(amount > 0, "EducTokenUpgradeable: mint amount must be positive");
+        require(amount <= SystemConstants.MAX_MINT_AMOUNT, "EducTokenUpgradeable: amount exceeds max mint amount");
+    }
+
+    function _validateMintReward(address student, uint256 amount, string calldata reason) private pure {
+        _validateMint(student, amount);
+        require(bytes(reason).length > 0, "EducTokenUpgradeable: reason cannot be empty");
+    }
+
+    function _validateBatchMintReward(
+        address[] calldata students,
+        uint256[] calldata amounts,
+        string[] calldata reasons
+    ) private pure {
+        uint256 studentsLength = students.length;
+        require(
+            studentsLength == amounts.length && 
+            studentsLength == reasons.length,
+            "EducTokenUpgradeable: arrays length mismatch"
+        );
+        require(studentsLength > 0, "EducTokenUpgradeable: empty arrays");
+        
+        for (uint256 i = 0; i < studentsLength; i++) {
+            _validateMintReward(students[i], amounts[i], reasons[i]);
+        }
+    }
+
+    function _calculateTotalAmount(uint256[] calldata amounts) private pure returns (uint256 totalAmount) {
+        for (uint256 i = 0; i < amounts.length; i++) {
+            totalAmount += amounts[i];
+        }
+    }
+
+    function _trackDailyMinting(uint256 amount) private {
+        uint256 today = block.timestamp / 1 days;
+        dailyMinting[today] += amount;
+        require(dailyMinting[today] <= SystemConstants.DAILY_MINT_LIMIT, "EducTokenUpgradeable: daily mint limit exceeded");
+    }
+
+    function _validateBurn(address account, uint256 amount) private view {
+        require(amount > 0, "EducTokenUpgradeable: burn amount must be positive");
+        require(balanceOf(account) >= amount, "EducTokenUpgradeable: burn amount exceeds balance");
+    }
+
+    function _validateBurnFromInactive(address from, uint256 amount) private view {
+        require(from != address(0), "EducTokenUpgradeable: burn from the zero address");
+        _validateBurn(from, amount);
+        require(_isAccountInactive(from), "EducTokenUpgradeable: account is not inactive");
     }
 }

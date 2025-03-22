@@ -27,11 +27,7 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
      * @dev Modifier to ensure only emergency recovery contract can call
      */
     modifier onlyEmergencyRecovery() {
-        require(
-            msg.sender == emergencyRecoveryContract && 
-            emergencyRecoveryContract != address(0),
-            "EducEmergencyEnabled: caller is not recovery contract"
-        );
+        _validateEmergencyRecoveryCaller();
         _;
     }
     
@@ -39,7 +35,7 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
      * @dev Modifier to ensure the address is valid (not zero)
      */
     modifier validAddress(address address_) {
-        require(address_ != address(0), "EducEmergencyEnabled: zero address not allowed");
+        _validateAddress(address_);
         _;
     }
 
@@ -73,14 +69,7 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         onlyRole(EducRoles.ADMIN_ROLE)
         validAddress(_recoveryDestination)
     {
-        address oldDestination = recoveryDestination;
-        recoveryDestination = _recoveryDestination;
-        
-        emit EmergencyEvents.RecoveryDestinationUpdated(
-            oldDestination,
-            _recoveryDestination,
-            block.timestamp
-        );
+        _updateRecoveryDestination(_recoveryDestination);
     }
     
     /**
@@ -91,14 +80,7 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         external
         onlyRole(EducRoles.ADMIN_ROLE)
     {
-        address oldContract = emergencyRecoveryContract;
-        emergencyRecoveryContract = _emergencyRecoveryContract;
-        
-        emit EmergencyEvents.EmergencyRecoveryContractUpdated(
-            oldContract,
-            _emergencyRecoveryContract,
-            block.timestamp
-        );
+        _updateEmergencyRecoveryContract(_emergencyRecoveryContract);
     }
 
     /**
@@ -114,7 +96,7 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         validAddress(token)
         returns (bool success)
     {
-        require(amount > 0, "EducEmergencyEnabled: Invalid amount");
+        _validateAmount(amount);
         
         uint256 amountToWithdraw = _getWithdrawalAmount(token, amount);
         
@@ -167,7 +149,7 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
         onlyEmergencyRecovery
         returns (bool success)
     {
-        require(amount > 0, "EducEmergencyEnabled: Invalid amount");
+        _validateAmount(amount);
         
         uint256 amountToWithdraw = _getETHWithdrawalAmount(amount);
         
@@ -211,4 +193,61 @@ abstract contract EducEmergencyEnabled is AccessControl, IEducEmergencyEnabled {
      * @dev Function to receive ETH
      */
     receive() external payable {}
+
+    /**
+     * @dev Validates the emergency recovery caller
+     */
+    function _validateEmergencyRecoveryCaller() private view {
+        require(
+            msg.sender == emergencyRecoveryContract && 
+            emergencyRecoveryContract != address(0),
+            "EducEmergencyEnabled: caller is not recovery contract"
+        );
+    }
+
+    /**
+     * @dev Validates an address
+     * @param address_ Address to validate
+     */
+    function _validateAddress(address address_) private pure {
+        require(address_ != address(0), "EducEmergencyEnabled: zero address not allowed");
+    }
+
+    /**
+     * @dev Validates an amount
+     * @param amount Amount to validate
+     */
+    function _validateAmount(uint256 amount) private pure {
+        require(amount > 0, "EducEmergencyEnabled: Invalid amount");
+    }
+
+    /**
+     * @dev Updates the recovery destination
+     * @param _recoveryDestination New recovery destination address
+     */
+    function _updateRecoveryDestination(address _recoveryDestination) private {
+        address oldDestination = recoveryDestination;
+        recoveryDestination = _recoveryDestination;
+        
+        emit EmergencyEvents.RecoveryDestinationUpdated(
+            oldDestination,
+            _recoveryDestination,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @dev Updates the emergency recovery contract
+     * @param _emergencyRecoveryContract New emergency recovery contract address
+     */
+    function _updateEmergencyRecoveryContract(address _emergencyRecoveryContract) private {
+        address oldContract = emergencyRecoveryContract;
+        emergencyRecoveryContract = _emergencyRecoveryContract;
+        
+        emit EmergencyEvents.EmergencyRecoveryContractUpdated(
+            oldContract,
+            _emergencyRecoveryContract,
+            block.timestamp
+        );
+    }
 }

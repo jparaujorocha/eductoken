@@ -70,6 +70,47 @@ describe("EducCourse", function () {
   });
 
   describe("Course Creation", function () {
+    it("Should not allow creating a course with too long ID", async function () {
+      // Create a courseId with more than MAX_COURSE_ID_LENGTH (50) characters
+      const courseId = "a".repeat(51);
+      const courseName = "Introduction to Computer Science";
+      const rewardAmount = ethers.parseEther("50");
+      const metadataHash = ethers.keccak256(ethers.toUtf8Bytes("metadata"));
+      
+      await expect(
+        course.connect(user1)["createCourse(string,string,uint256,bytes32)"](courseId, courseName, rewardAmount, metadataHash)
+      ).to.be.revertedWith("EducCourse: Invalid course ID");
+    });
+    
+    it("Should not allow creating a course with too long name", async function () {
+      // Create a courseName with more than MAX_COURSE_NAME_LENGTH (100) characters
+      const courseId = "CS101";
+      const courseName = "a".repeat(101);
+      const rewardAmount = ethers.parseEther("50");
+      const metadataHash = ethers.keccak256(ethers.toUtf8Bytes("metadata"));
+      
+      await expect(
+        course.connect(user1)["createCourse(string,string,uint256,bytes32)"](courseId, courseName, rewardAmount, metadataHash)
+      ).to.be.revertedWith("EducCourse: Invalid course name");
+    });
+        
+    it("Should not allow change description that is too long", async function () {
+      const courseId = "CS101";
+      // Create a description with more than MAX_CHANGE_DESCRIPTION_LENGTH (200) characters
+      const changeDescription = "a".repeat(201);
+      
+      await expect(
+        course.connect(user1)["updateCourse(string,string,uint256,bool,bytes32,string)"](
+          courseId,
+          "Updated Course",
+          ethers.parseEther("60"),
+          true,
+          ethers.ZeroHash,
+          changeDescription
+        )
+      ).to.be.revertedWith("EducCourse: Change description too long");
+    });
+    
     it("Should allow active educator to create a course", async function () {
       // Double-check the role is correctly set
       expect(await educator.hasRole(EDUCATOR_ROLE, course.target)).to.equal(true);
@@ -218,6 +259,67 @@ describe("EducCourse", function () {
       
       await course.connect(user1)["createCourse(string,string,uint256,bytes32)"](courseId, courseName, rewardAmount, metadataHash);
     });
+
+    it("Should emit CourseMetadataUpdated event when updating metadata", async function () {
+      const courseId = "CS101";
+      const newMetadataHash = ethers.keccak256(ethers.toUtf8Bytes("new-metadata"));
+            
+      // Update only metadata and capture transaction
+      const tx = await course.connect(user1)["updateCourse(string,string,uint256,bool,bytes32,string)"](
+        courseId,
+        "", // Empty name means keep current
+        0,  // 0 means keep current reward
+        true,
+        newMetadataHash,
+        "Updated metadata only"
+      );
+      
+      // Check if the transaction emits the event
+      await expect(tx).to.emit(course, "CourseMetadataUpdated");
+      
+      // For additional verification, you can check if course metadata was updated
+      const updatedCourse = await course.getCourseInfo(user1.address, courseId);
+      expect(updatedCourse.metadataHash).to.equal(newMetadataHash);
+    });
+    it("Should track history even when only changing active status", async function () {
+      const courseId = "CS101";
+      // Only update the active status
+      await course.connect(user1)["updateCourse(string,string,uint256,bool,bytes32,string)"](
+        courseId,
+        "", // Empty name means keep current
+        0,  // 0 means keep current reward
+        false, // Set to inactive (original was active)
+        ethers.ZeroHash, // Zero hash means keep current metadata
+        "Deactivating course"
+      );
+      
+      // Verify history was tracked
+      const historyCount = await course.getCourseHistoryCount(user1.address, courseId);
+      expect(historyCount).to.equal(1);
+      
+      // Check history entry
+      const history = await course.getCourseHistory(user1.address, courseId, 2);
+      expect(history.previousActive).to.equal(true);
+      expect(history.changeDescription).to.equal("Deactivating course");
+    });
+    it("Should correctly handle updating course name with max length", async function () {
+      const courseId = "CS101";
+      // Create a name with exactly MAX_COURSE_NAME_LENGTH (100) characters
+      const longCourseName = "a".repeat(100);
+      
+      await course.connect(user1)["updateCourse(string,string,uint256,bool,bytes32,string)"](
+        courseId,
+        longCourseName,
+        0,
+        true,
+        ethers.ZeroHash,
+        "Updated with max length name"
+      );
+      
+      // Verify name was updated
+      const updatedCourse = await course.getCourseInfo(user1.address, courseId);
+      expect(updatedCourse.courseName).to.equal(longCourseName);
+    });
     
     it("Should allow course owner to update course", async function () {
       const courseId = "CS101";
@@ -362,6 +464,39 @@ describe("EducCourse", function () {
   });
 
   describe("Course Completion Tracking", function () {
+    it("Should increment completion count multiple times", async function () {
+      const courseId = "CS101";
+      
+      // Increment completion count twice
+      await course.connect(admin).incrementCompletionCount(user1.address, courseId);
+      await course.connect(admin).incrementCompletionCount(user1.address, courseId);
+      
+      // Get updated completion count
+      const updatedCourse = await course.getCourseInfo(user1.address, courseId);
+      expect(updatedCourse.completionCount).to.equal(2);
+    });
+    
+    it("Should handle incrementing completions for deactivated courses", async function () {
+      const courseId = "CS101";
+      
+      // Deactivate the course
+      await course.connect(user1)["updateCourse(string,string,uint256,bool,bytes32,string)"](
+        courseId,
+        "", // Keep same name
+        0,  // Keep same reward
+        false, // Set to inactive
+        ethers.ZeroHash, // Keep same metadata
+        "Deactivating course"
+      );
+      
+      // Increment completion count for inactive course (should still work)
+      await course.connect(admin).incrementCompletionCount(user1.address, courseId);
+      
+      // Get updated completion count
+      const updatedCourse = await course.getCourseInfo(user1.address, courseId);
+      expect(updatedCourse.completionCount).to.equal(1);
+    });
+
     beforeEach(async function () {
       // Create a course
       const courseId = "CS101";

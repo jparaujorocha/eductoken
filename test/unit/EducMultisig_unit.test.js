@@ -128,6 +128,15 @@ describe("EducMultisig", function () {
         EducMultisig.deploy(duplicateSigners, 1, admin.address)
       ).to.be.revertedWith("EducMultisig: Duplicate signer");
     });
+    
+    it("Should validate admin address during deployment", async function() {
+      const initialSigners = [signer1.address, signer2.address];
+      const initialThreshold = 2;
+      
+      await expect(
+        EducMultisig.deploy(initialSigners, initialThreshold, ethers.ZeroAddress)
+      ).to.be.revertedWith("EducMultisig: Invalid admin");
+    });
   });
 
   describe("Signer Management", function () {
@@ -140,9 +149,19 @@ describe("EducMultisig", function () {
     });
     
     it("Should emit SignerAdded event when adding signer", async function () {
-      await expect(multisig.connect(admin).addSigner(signer3.address))
-        .to.emit(multisig, EVENT_SIGNER_ADDED);
-      // Removed .withArgs() check due to event argument mismatch
+      const tx = await multisig.connect(admin).addSigner(signer3.address);
+      const receipt = await tx.wait();
+      
+      // Check for event
+      const addedEvents = receipt.logs.filter(log => {
+        try {
+          return log.fragment?.name === EVENT_SIGNER_ADDED;
+        } catch (e) {
+          return false;
+        }
+      });
+      
+      expect(addedEvents.length).to.equal(1);
     });
     
     it("Should not allow adding existing signer", async function () {
@@ -196,9 +215,19 @@ describe("EducMultisig", function () {
       // Add a third signer first so we don't go below threshold
       await multisig.connect(admin).addSigner(signer3.address);
       
-      await expect(multisig.connect(admin).removeSigner(signer1.address))
-        .to.emit(multisig, EVENT_SIGNER_REMOVED);
-      // Removed .withArgs() check due to event argument mismatch
+      const tx = await multisig.connect(admin).removeSigner(signer1.address);
+      const receipt = await tx.wait();
+      
+      // Check for event
+      const removedEvents = receipt.logs.filter(log => {
+        try {
+          return log.fragment?.name === EVENT_SIGNER_REMOVED;
+        } catch (e) {
+          return false;
+        }
+      });
+      
+      expect(removedEvents.length).to.equal(1);
     });
     
     it("Should prevent removing signer if it would break threshold requirements", async function () {
@@ -225,6 +254,20 @@ describe("EducMultisig", function () {
         multisig.connect(user1).removeSigner(signer1.address)
       ).to.be.reverted;
     });
+    
+    it("Should correctly revoke admin role when removing signer", async function () {
+      // Add a third signer
+      await multisig.connect(admin).addSigner(signer3.address);
+      
+      // Verify the role was granted during addition
+      expect(await multisig.hasRole(ADMIN_ROLE, signer3.address)).to.equal(true);
+      
+      // Remove the signer
+      await multisig.connect(admin).removeSigner(signer3.address);
+      
+      // Verify the role was revoked
+      expect(await multisig.hasRole(ADMIN_ROLE, signer3.address)).to.equal(false);
+    });
   });
 
   describe("Threshold Management", function () {
@@ -240,12 +283,22 @@ describe("EducMultisig", function () {
     });
     
     it("Should emit ThresholdChanged event", async function () {
-      _ = await multisig.threshold();
+      const oldThreshold = await multisig.threshold();
       const newThreshold = 3;
       
-      await expect(multisig.connect(admin).changeThreshold(newThreshold))
-        .to.emit(multisig, EVENT_THRESHOLD_CHANGED);
-      // Removed .withArgs() check due to event argument mismatch
+      const tx = await multisig.connect(admin).changeThreshold(newThreshold);
+      const receipt = await tx.wait();
+      
+      // Check for event
+      const thresholdEvents = receipt.logs.filter(log => {
+        try {
+          return log.fragment?.name === EVENT_THRESHOLD_CHANGED;
+        } catch (e) {
+          return false;
+        }
+      });
+      
+      expect(thresholdEvents.length).to.equal(1);
     });
     
     it("Should not allow threshold below 1", async function () {
@@ -258,7 +311,7 @@ describe("EducMultisig", function () {
       const signersCount = await multisig.getSignerCount();
       
       await expect(
-        multisig.connect(admin).changeThreshold(BigInt(signersCount) + BigInt(1))
+        multisig.connect(admin).changeThreshold(Number(signersCount) + 1)
       ).to.be.revertedWith("EducMultisig: Invalid threshold");
     });
     
@@ -281,6 +334,18 @@ describe("EducMultisig", function () {
       // Threshold should have been adjusted to new signer count
       expect(await multisig.threshold()).to.equal(3);
     });
+    
+    it("Should keep threshold when removing a signer but count still above threshold", async function () {
+      // We have 3 signers with threshold 2
+      expect(await multisig.threshold()).to.equal(2);
+      expect(await multisig.getSignerCount()).to.equal(3);
+      
+      // Remove a signer
+      await multisig.connect(admin).removeSigner(signer1.address);
+      
+      // Threshold should remain unchanged
+      expect(await multisig.threshold()).to.equal(2);
+    });
   });
 
   describe("Proposal Management", function () {
@@ -290,7 +355,7 @@ describe("EducMultisig", function () {
       await multisig.connect(admin).incrementProposalCount();
       
       const newCount = await multisig.proposalCount();
-      expect(newCount).to.equal(initialCount + BigInt(1));
+      expect(newCount).to.equal(initialCount + 1n);
     });
     
     it("Should not allow non-admin to increment proposal count", async function () {
@@ -322,6 +387,56 @@ describe("EducMultisig", function () {
       expect(await multisig.isSigner(signer2.address)).to.equal(true);
       expect(await multisig.isSigner(signer3.address)).to.equal(false);
       expect(await multisig.isSigner(user1.address)).to.equal(false);
+    });
+    
+    it("Should correctly update signer list after removing a signer", async function () {
+      // Add a third signer first
+      await multisig.connect(admin).addSigner(signer3.address);
+      
+      // Verify initial state
+      let signers = await multisig.getSigners();
+      expect(signers.length).to.equal(3);
+      expect(signers).to.include(signer1.address);
+      expect(signers).to.include(signer2.address);
+      expect(signers).to.include(signer3.address);
+      
+      // Remove the middle signer
+      await multisig.connect(admin).removeSigner(signer2.address);
+      
+      // Verify updated state
+      signers = await multisig.getSigners();
+      expect(signers.length).to.equal(2);
+      expect(signers).to.include(signer1.address);
+      expect(signers).to.not.include(signer2.address);
+      expect(signers).to.include(signer3.address);
+    });
+    
+    it("Should maintain signer list order after internal array manipulation", async function () {
+      // Add two more signers
+      await multisig.connect(admin).addSigner(signer3.address);
+      await multisig.connect(admin).addSigner(user1.address);
+      
+      // Get initial state
+      const initialSigners = await multisig.getSigners();
+      
+      // Remove a signer from the middle (this uses array manipulation)
+      await multisig.connect(admin).removeSigner(signer2.address);
+      
+      // Get updated state
+      const updatedSigners = await multisig.getSigners();
+      
+      // The last signer should have been moved to replace the removed signer
+      expect(updatedSigners.length).to.equal(initialSigners.length - 1);
+      expect(updatedSigners).to.include(signer1.address);
+      expect(updatedSigners).to.not.include(signer2.address);
+      expect(updatedSigners).to.include(signer3.address);
+      expect(updatedSigners).to.include(user1.address);
+    });
+  });
+  
+  describe("Authority Management", function () {
+    it("Should correctly set authority during deployment", async function () {
+      expect(await multisig.authority()).to.equal(admin.address);
     });
   });
 });

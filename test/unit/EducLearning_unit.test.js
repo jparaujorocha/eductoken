@@ -141,6 +141,25 @@ describe("EducLearning", function () {
   });
 
   describe("Deployment and Initialization", function () {
+    it("Should not allow initialization with invalid contract addresses", async function () {
+      // Deploy a new instance
+      const newLearning = await EducLearning.deploy(admin.address);
+      
+      // Try to initialize with zero address for token
+      await expect(
+        newLearning.initialize(
+          ethers.ZeroAddress, // Invalid token address
+          educator.target,
+          student.target,
+          course.target,
+          config.target,
+          pauseControl.target,
+          multisig.target,
+          proposal.target
+        )
+      ).to.be.revertedWith("EducLearning: Token address invalid");
+    });
+
     it("Should set the right admin", async function () {
       expect(await learning.hasRole(ADMIN_ROLE, admin.address)).to.equal(true);
     });
@@ -222,6 +241,17 @@ describe("EducLearning", function () {
   });
 
   describe("Course Completion", function () {
+    it("Should properly record mint statistics on completeCourse", async function () {
+      const initialMinted = await educator.getEducatorTotalMinted(educatorAccount.address);
+      
+      await learning.connect(educatorAccount).completeCourse(studentAccount1.address, "CS101");
+      
+      const finalMinted = await educator.getEducatorTotalMinted(educatorAccount.address);
+      const courseReward = await course.getCourseReward(educatorAccount.address, "CS101");
+      
+      expect(finalMinted).to.equal(initialMinted + courseReward);
+    });
+
     it("Should allow educator to process course completion", async function () {
       await learning.connect(educatorAccount).completeCourse(studentAccount1.address, "CS101");
       
@@ -316,6 +346,16 @@ describe("EducLearning", function () {
   });
 
   describe("Additional Educational Rewards", function () {
+
+    it("Should validate address in issueReward", async function () {
+      const rewardAmount = ethers.parseEther("25");
+      const reason = "Extra credit assignment";
+      
+      await expect(
+        learning.connect(educatorAccount).issueReward(ethers.ZeroAddress, rewardAmount, reason)
+      ).to.be.revertedWith("EducLearning: Invalid student address");
+    });
+
     it("Should allow educator to issue additional rewards", async function () {
       const rewardAmount = ethers.parseEther("25");
       const reason = "Extra credit assignment";
@@ -397,6 +437,17 @@ describe("EducLearning", function () {
   });
 
   describe("Batch Rewards", function () {
+
+    it("Should validate all addresses in batch rewards", async function () {
+      const students = [studentAccount1.address, ethers.ZeroAddress];
+      const amounts = [ethers.parseEther("10"), ethers.parseEther("15")];
+      const reasons = ["Quiz completion", "Project submission"];
+      
+      await expect(
+        learning.connect(educatorAccount).batchIssueRewards(students, amounts, reasons)
+      ).to.be.revertedWith("EducLearning: Invalid student address");
+    });
+
     it("Should allow educator to issue batch rewards", async function () {
       const students = [studentAccount1.address, studentAccount2.address];
       const amounts = [ethers.parseEther("10"), ethers.parseEther("15")];
@@ -526,6 +577,34 @@ describe("EducLearning", function () {
   });
 
   describe("Daily Minting Limit Management", function () {
+    it("Should validate the limit value", async function () {
+      await expect(
+        learning.connect(admin).setDailyMintingLimit(0)
+      ).to.be.revertedWith("EducLearning: Invalid limit");
+    });
+    
+    it("Should track daily minting accurately across different functions", async function () {
+      // First issue a reward using half the daily limit
+      const halfLimit = (await learning.dailyMintingLimit()) / BigInt(2);
+      await learning.connect(educatorAccount).issueReward(
+        studentAccount1.address, 
+        halfLimit, 
+        "Half limit reward"
+      );
+      
+      // Then complete a course that would exceed the limit
+      const courseReward = await course.getCourseReward(educatorAccount.address, "CS101");
+      if (halfLimit + courseReward > await learning.dailyMintingLimit()) {
+        await expect(
+          learning.connect(educatorAccount).completeCourse(studentAccount1.address, "CS101")
+        ).to.be.revertedWith("EducLearning: Daily mint limit exceeded");
+      }
+      
+      // Verify remaining amount
+      const expectedRemaining = (await learning.dailyMintingLimit()) - halfLimit;
+      expect(await learning.getDailyMintingRemaining()).to.equal(expectedRemaining);
+    });
+
     it("Should allow admin to set daily minting limit", async function () {
       const newLimit = ethers.parseEther("2000");
       await learning.connect(admin).setDailyMintingLimit(newLimit);

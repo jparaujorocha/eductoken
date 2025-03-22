@@ -199,70 +199,80 @@ contract EducCourse is AccessControl, Pausable, ReentrancyGuard, IEducCourse {
      * @dev Internal implementation of course update
      * @param params Course update parameters
      */
-    function _updateCourse(CourseTypes.CourseUpdateParams memory params) private {
-        bytes32 courseKey = keccak256(abi.encodePacked(msg.sender, params.courseId));
-        CourseTypes.Course storage course = courses[courseKey];
-        
-        // Store previous values for history tracking
-        string memory previousName = course.courseName;
-        uint256 previousReward = course.rewardAmount;
-        bool previousActive = course.isActive;
-        bytes32 previousMetadataHash = course.metadataHash;
-        
-        bool updated = false;
-        
-        if (bytes(params.courseName).length > 0 && bytes(params.courseName).length <= SystemConstants.MAX_COURSE_NAME_LENGTH) {
-            course.courseName = params.courseName;
-            updated = true;
-        }
-        
-        if (params.rewardAmount > 0) {
-            course.rewardAmount = params.rewardAmount;
-            updated = true;
-        }
-        
-        course.isActive = params.isActive;
-        
-        if (params.metadataHash != bytes32(0)) {
-            course.metadataHash = params.metadataHash;
-            updated = true;
-        }
-        
-        if (updated || previousActive != params.isActive) {
-            uint256 currentTime = block.timestamp;
-            course.lastUpdatedAt = currentTime;
-            course.version++;
-            
-            CourseTypes.CourseHistory memory history = CourseTypes.CourseHistory({
-                courseId: params.courseId,
-                educator: msg.sender,
-                version: course.version,
-                previousName: previousName,
-                previousReward: previousReward,
-                previousActive: previousActive,
-                previousMetadataHash: previousMetadataHash,
-                updatedBy: msg.sender,
-                updatedAt: currentTime,
-                changeDescription: params.changeDescription
-            });
-            
-            courseHistories[courseKey].push(history);
-            
-            emit CourseEvents.CourseUpdated(
-                params.courseId,
-                msg.sender,
-                course.version,
-                previousName,
-                course.courseName,
-                previousReward,
-                course.rewardAmount,
-                previousActive,
-                course.isActive,
-                msg.sender,
-                currentTime
-            );
-        }
+   function _updateCourse(CourseTypes.CourseUpdateParams memory params) private {
+    bytes32 courseKey = keccak256(abi.encodePacked(msg.sender, params.courseId));
+    CourseTypes.Course storage course = courses[courseKey];
+    
+    // Store previous values for history tracking
+    string memory previousName = course.courseName;
+    uint256 previousReward = course.rewardAmount;
+    bool previousActive = course.isActive;
+    bytes32 previousMetadataHash = course.metadataHash;
+    
+    bool updated = false;
+    
+    if (bytes(params.courseName).length > 0 && bytes(params.courseName).length <= SystemConstants.MAX_COURSE_NAME_LENGTH) {
+        course.courseName = params.courseName;
+        updated = true;
     }
+    
+    if (params.rewardAmount > 0) {
+        course.rewardAmount = params.rewardAmount;
+        updated = true;
+    }
+    
+    course.isActive = params.isActive;
+    
+    // Add specific check for metadata hash changes
+    if (params.metadataHash != bytes32(0)) {
+        // Emit specific event for metadata changes
+        emit CourseEvents.CourseMetadataUpdated(
+            params.courseId,
+            msg.sender,
+            course.metadataHash,
+            params.metadataHash,
+            block.timestamp
+        );
+        
+        course.metadataHash = params.metadataHash;
+        updated = true;
+    }
+    
+    if (updated || previousActive != params.isActive) {
+        uint256 currentTime = block.timestamp;
+        course.lastUpdatedAt = currentTime;
+        course.version++;
+        
+        CourseTypes.CourseHistory memory history = CourseTypes.CourseHistory({
+            courseId: params.courseId,
+            educator: msg.sender,
+            version: course.version,
+            previousName: previousName,
+            previousReward: previousReward,
+            previousActive: previousActive,
+            previousMetadataHash: previousMetadataHash,
+            updatedBy: msg.sender,
+            updatedAt: currentTime,
+            changeDescription: params.changeDescription
+        });
+        
+        courseHistories[courseKey].push(history);
+        
+        emit CourseEvents.CourseUpdated(
+            params.courseId,
+            msg.sender,
+            course.version,
+            previousName,
+            course.courseName,
+            previousReward,
+            course.rewardAmount,
+            previousActive,
+            course.isActive,
+            msg.sender,
+            currentTime
+        );
+    }
+}
 
     /**
      * @dev Increments course completion count with detailed tracking

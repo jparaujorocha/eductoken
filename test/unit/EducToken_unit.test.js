@@ -148,6 +148,12 @@ describe("EducToken", function () {
         token.connect(user1)["mint(address,uint256)"](user2.address, mintAmount)
       ).to.be.revertedWith("EducToken: caller is not a minter");
     });
+
+    it("Should not allow minting zero amount", async function () {
+      await expect(
+        token.connect(minter)["mint(address,uint256)"](user1.address, 0)
+      ).to.be.revertedWith("EducToken: amount must be positive");
+    });
   });
 
   describe("Educational Rewards", function () {
@@ -203,6 +209,75 @@ describe("EducToken", function () {
       await expect(
         token.connect(minter)["batchMintReward(address[],uint256[],string[])"]([], [], [])
       ).to.be.revertedWith("EducToken: empty arrays");
+    });
+
+    it("Should fail batch minting with zero amount", async function () {
+      const students = [user1.address, user2.address];
+      const amounts = [ethers.parseEther("50"), 0];
+      const reasons = ["Quiz", "Assignment"];
+      
+      await expect(
+        token.connect(minter)["batchMintReward(address[],uint256[],string[])"](students, amounts, reasons)
+      ).to.be.revertedWith("EducToken: mint amount must be positive");
+    });
+    
+    it("Should fail batch minting with zero address", async function () {
+      const students = [user1.address, ethers.ZeroAddress];
+      const amounts = [ethers.parseEther("50"), ethers.parseEther("75")];
+      const reasons = ["Quiz", "Assignment"];
+      
+      await expect(
+        token.connect(minter)["batchMintReward(address[],uint256[],string[])"](students, amounts, reasons)
+      ).to.be.revertedWith("EducToken: mint to the zero address");
+    });
+    
+    it("Should fail batch minting with empty reason", async function () {
+      const students = [user1.address, user2.address];
+      const amounts = [ethers.parseEther("50"), ethers.parseEther("75")];
+      const reasons = ["Quiz", ""];
+      
+      await expect(
+        token.connect(minter)["batchMintReward(address[],uint256[],string[])"](students, amounts, reasons)
+      ).to.be.revertedWith("EducToken: reason cannot be empty");
+    });
+    
+    it("Should fail batch minting exceeding max mint amount", async function () {
+      const students = [user1.address, user2.address];
+      const amounts = [ethers.parseEther("50"), MAX_MINT_AMOUNT + BigInt(1)];
+      const reasons = ["Quiz", "Assignment"];
+      
+      await expect(
+        token.connect(minter)["batchMintReward(address[],uint256[],string[])"](students, amounts, reasons)
+      ).to.be.revertedWith("EducToken: amount exceeds max mint amount");
+    });
+    
+    it("Should use structured parameters for mintReward", async function () {
+      // Create params for structured mintReward
+      const params = {
+        student: user1.address,
+        amount: ethers.parseEther("100"),
+        reason: "Structured Param Test"
+      };
+      
+      // Call the structured parameter version
+      await token.connect(minter)["mintReward((address,uint256,string))"](params);
+      
+      expect(await token.balanceOf(user1.address)).to.equal(params.amount);
+    });
+    
+    it("Should use structured parameters for batchMintReward", async function () {
+      // Create params for structured batchMintReward
+      const params = {
+        students: [user1.address, user2.address],
+        amounts: [ethers.parseEther("50"), ethers.parseEther("75")],
+        reasons: ["Quiz", "Assignment"]
+      };
+      
+      // Call the structured parameter version
+      await token.connect(minter)["batchMintReward((address[],uint256[],string[]))"](params);
+      
+      expect(await token.balanceOf(user1.address)).to.equal(params.amounts[0]);
+      expect(await token.balanceOf(user2.address)).to.equal(params.amounts[1]);
     });
   });
   
@@ -305,6 +380,78 @@ describe("EducToken", function () {
       await expect(
         token.connect(admin).burnFromInactive(user1.address, burnAmount, "Inactive account")
       ).to.be.revertedWith("EducToken: account is not inactive");
+    });
+    it("Should not allow burning zero amount", async function () {
+      await expect(
+        token.connect(user1).burn(0)
+      ).to.be.revertedWith("EducToken: amount must be positive");
+    });
+    
+    it("Should not allow burning from zero address", async function () {
+      await expect(
+        token.connect(admin).burnFromInactive(ethers.ZeroAddress, ethers.parseEther("100"), "Test")
+      ).to.be.revertedWith("EducToken: zero address not allowed");
+    });
+    
+    it("Should not allow burning zero amount from inactive account", async function () {
+      // First mint some tokens to user1
+      const mintAmount = ethers.parseEther("1000");
+      await token.connect(minter)["mint(address,uint256)"](user1.address, mintAmount);
+      
+      // Register user1 as student
+      await student["registerStudent(address)"](user1.address);
+      
+      // Get the last activity time to make this account appear inactive
+      await student["recordCustomActivity(address,string,string)"](user1.address, "Test", "Initial activity");
+      
+      // Increase time to make user1 inactive
+      await time.increase(BURN_COOLDOWN_PERIOD + 1);
+      
+      // Try to burn zero tokens
+      await expect(
+        token.connect(admin).burnFromInactive(user1.address, 0, "Inactive account")
+      ).to.be.revertedWith("EducToken: amount must be positive");
+    });
+    
+    it("Should use structured parameters for burnFromInactive", async function () {
+      // First mint some tokens to user1
+      const mintAmount = ethers.parseEther("1000");
+      await token.connect(minter)["mint(address,uint256)"](user1.address, mintAmount);
+      
+      // Register user1 as student
+      await student["registerStudent(address)"](user1.address);
+      
+      // Get the last activity time to make this account appear inactive
+      await student["recordCustomActivity(address,string,string)"](user1.address, "Test", "Initial activity");
+      
+      // Increase time to make user1 inactive
+      await time.increase(BURN_COOLDOWN_PERIOD + 1);
+      
+      // Create params for structured burnFromInactive
+      const params = {
+        from: user1.address,
+        amount: ethers.parseEther("500"),
+        reason: "Structured Parameter Test"
+      };
+      
+      // Call the structured parameter version
+      await token.connect(admin)["burnFromInactive((address,uint256,string))"](params);
+      
+      expect(await token.balanceOf(user1.address)).to.equal(mintAmount - params.amount);
+    });
+    
+    // Adicione na seção "Account Inactivity"
+    it("Should handle when student contract is not set", async function () {
+      // Deploy a new token without setting student contract
+      const newToken = await EducToken.deploy(admin.address);
+      
+      // Any account should be considered active
+      expect(await newToken.isAccountInactive(user1.address)).to.equal(false);
+    });
+    
+    it("Should handle account inactive check for non-registered student", async function () {
+      // user2 is not registered as student
+      expect(await token.isAccountInactive(user2.address)).to.equal(false);
     });
   });
 

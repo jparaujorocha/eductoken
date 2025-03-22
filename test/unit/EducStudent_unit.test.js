@@ -49,6 +49,56 @@ describe("EducStudent", function () {
   });
 
   describe("Student Registration", function () {
+    it("Should not allow registering with structured parameters to zero address", async function () {
+      // Using the structured params version with zero address
+      const params = {
+        studentAddress: ethers.ZeroAddress
+      };
+      
+      await expect(
+        student.connect(admin)["registerStudent((address))"](params)
+      ).to.be.revertedWith("EducStudent: Invalid student address");
+    });
+    
+    // Adicione na seção "Course Completion"
+    it("Should verify additionalMetadata is set correctly", async function () {
+      const courseId = "CS101";
+      const tokensAwarded = ethers.parseEther("50");
+      
+      await student.connect(educator)["recordCourseCompletion(address,string,uint256)"](user1.address, courseId, tokensAwarded);
+      
+      const completionInfo = await student.getCourseCompletionInfo(user1.address, courseId);
+      expect(completionInfo.additionalMetadata).to.not.equal(ethers.ZeroHash);
+    });
+    
+    it("Should not allow recording completions with structured parameters for invalid inputs", async function () {
+      // Using the structured params version with empty courseId
+      const params = {
+        studentAddress: user1.address,
+        courseId: "",
+        tokensAwarded: ethers.parseEther("50")
+      };
+      
+      await expect(
+        student.connect(educator)["recordCourseCompletion((address,string,uint256))"](params)
+      ).to.be.revertedWith("EducStudent: Invalid course ID");
+    });
+    
+    // Adicione na seção "Token Usage"
+    it("Should verify structured parameter validation for token usage", async function () {
+      await student.connect(admin)["registerStudent(address)"](user1.address);
+      
+      const params = {
+        studentAddress: user1.address,
+        tokensUsed: 0,
+        purpose: "Invalid test"
+      };
+      
+      await expect(
+        student.connect(admin)["recordTokenUsage((address,uint256,string))"](params)
+      ).to.be.revertedWith("EducStudent: Invalid token amount");
+    });
+
     it("Should allow admin to register a student", async function () {
       await student.connect(admin)["registerStudent(address)"](user1.address);
       
@@ -288,6 +338,25 @@ describe("EducStudent", function () {
     beforeEach(async function () {
       // Register a student
       await student.connect(admin)["registerStudent(address)"](user1.address);
+    });
+
+    it("Should not allow adding empty category", async function () {
+      await expect(
+        student.connect(admin)["addActivityCategory(address,string)"](user1.address, "")
+      ).to.be.revertedWith("EducStudent: Category cannot be empty");
+    });
+    
+    it("Should validate structured parameters for custom activity", async function () {
+      // Missing student address
+      const params = {
+        studentAddress: ethers.ZeroAddress,
+        category: "Test",
+        details: "Details"
+      };
+      
+      await expect(
+        student.connect(admin)["recordCustomActivity((address,string,string))"](params)
+      ).to.be.revertedWith("EducStudent: Invalid student address");
     });
     
     it("Should allow admin to add activity category", async function () {

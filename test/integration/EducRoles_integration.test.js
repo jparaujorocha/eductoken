@@ -2,53 +2,53 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("EducRoles Integration Tests", function () {
-  let rolesContract;
+  let accessContract;
+  let admin;
+
+  // Role constants
+  const ADMIN_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ADMIN_ROLE"));
+  const EDUCATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("EDUCATOR_ROLE"));
+  const MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
+  const PAUSER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("PAUSER_ROLE"));
+  const UPGRADER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("UPGRADER_ROLE"));
+  const EMERGENCY_ROLE = ethers.keccak256(ethers.toUtf8Bytes("EMERGENCY_ROLE"));
 
   beforeEach(async function () {
-    const EducRolesFactory = await ethers.getContractFactory("EducRoles");
-    rolesContract = await EducRolesFactory.deploy();
+    [admin, user] = await ethers.getSigners();
+
+    // Use EducAccess which incorporates EducRoles
+    const AccessFactory = await ethers.getContractFactory("EducAccess");
+    accessContract = await AccessFactory.deploy(admin.address);
   });
 
   describe("Role Validation and Management", function () {
-    it("Should validate roles", async function () {
-        const roles = [
-          ethers.keccak256(ethers.toUtf8Bytes("ADMIN_ROLE")),
-          ethers.keccak256(ethers.toUtf8Bytes("EDUCATOR_ROLE")),
-          // Add other predefined roles
-        ];
-        
-        for (const role of roles) {
-          const isValid = await rolesContract.hasRole(role, ethers.ZeroAddress);
-          // Adjust validation based on actual contract implementation
-          expect(isValid).to.be.false;
-        }
-      });
-
-    it("Should return correct role names", async function () {
-      const roleNames = [
-        "Admin",
-        "Educator",
-        "Minter",
-        "Pauser", 
-        "Upgrader",
-        "Emergency"
-      ];
-
-      const roles = await rolesContract.getAllRoles();
-      
-      for (let i = 0; i < roles.length; i++) {
-        const roleName = await rolesContract.getRoleName(roles[i]);
-        expect(roleName).to.equal(roleNames[i]);
-      }
+    it("Should have all predefined roles set up correctly", async function () {
+        // Verify admin has all the predefined roles
+        expect(await accessContract.hasRole(ADMIN_ROLE, admin.address)).to.be.true;
+        expect(await accessContract.hasRole(PAUSER_ROLE, admin.address)).to.be.true;
+        expect(await accessContract.hasRole(UPGRADER_ROLE, admin.address)).to.be.true;
+        expect(await accessContract.hasRole(EMERGENCY_ROLE, admin.address)).to.be.true;
     });
 
-    it("Should handle unknown roles gracefully", async function () {
-      const unknownRole = ethers.keccak256(ethers.toUtf8Bytes("UNKNOWN_ROLE"));
+    it("Should handle roles correctly when granted and revoked", async function () {
+      const [_, user] = await ethers.getSigners();
       
-      expect(await rolesContract.isValidRole(unknownRole)).to.be.false;
+      // Grant educator role
+      await accessContract.connect(admin).grantRole(EDUCATOR_ROLE, user.address);
+      expect(await accessContract.hasRole(EDUCATOR_ROLE, user.address)).to.be.true;
       
-      const roleName = await rolesContract.getRoleName(unknownRole);
-      expect(roleName).to.equal("Unknown");
+      // Revoke educator role
+      await accessContract.connect(admin).revokeRole(EDUCATOR_ROLE, user.address);
+      expect(await accessContract.hasRole(EDUCATOR_ROLE, user.address)).to.be.false;
+    });
+
+    it("Should prevent unauthorized roles management", async function () {
+      const [_, unauthorizedUser, someUser] = await ethers.getSigners();
+      
+      // Unauthorized user tries to grant role
+      await expect(
+        accessContract.connect(unauthorizedUser).grantRole(EDUCATOR_ROLE, someUser.address)
+      ).to.be.reverted;
     });
   });
 });

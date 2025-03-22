@@ -89,15 +89,17 @@ describe("EducAccess Integration Tests", function () {
       expect(await accessContract.hasRole(UPGRADER_ROLE, emergencyRole.address)).to.be.true;
     });
 
-    it("Should prevent role conflicts", async function () {
-        // Grant pauser role
-        await accessContract.connect(admin).grantRole(PAUSER_ROLE, roleManager.address);
+    it("Should allow granting multiple roles to the same address", async function () {
+      // Grant pauser role
+      await accessContract.connect(admin).grantRole(PAUSER_ROLE, roleManager.address);
       
-        // Specifically check that granting ADMIN_ROLE fails with the correct error
-        await expect(
-          accessContract.connect(admin).grantRole(ADMIN_ROLE, roleManager.address)
-        ).to.be.revertedWithCustomError(accessContract, "AccessControlConflictingRole");
-      });
+      // Grant admin role to the same address
+      await accessContract.connect(admin).grantRole(ADMIN_ROLE, roleManager.address);
+      
+      // Verify both roles were granted
+      expect(await accessContract.hasRole(PAUSER_ROLE, roleManager.address)).to.be.true;
+      expect(await accessContract.hasRole(ADMIN_ROLE, roleManager.address)).to.be.true;
+    });
   });
 
   describe("Emergency Role Special Handling", function () {

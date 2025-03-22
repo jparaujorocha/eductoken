@@ -6,12 +6,10 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "../access/roles/EducRoles.sol";
-import "../interfaces/IEducToken.sol";
 import "./interfaces/IUpgradeable.sol";
 import "../interfaces/IEducStudent.sol";
 import "../config/constants/SystemConstants.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-
 
 /**
  * @title EducTokenUpgradeable
@@ -59,7 +57,9 @@ contract EducTokenUpgradeable is
      * Use initialize() instead
      */
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() initializer {}
+    constructor() {
+        _disableInitializers();
+    }
 
     /**
      * @dev Initializer function (replaces constructor)
@@ -71,6 +71,7 @@ contract EducTokenUpgradeable is
     {
         require(admin != address(0), "EducTokenUpgradeable: admin cannot be zero address");
 
+        // Call parent initializers in the correct order
         __ERC20_init("EducToken", "EDUC");
         __AccessControl_init();
         __Pausable_init();

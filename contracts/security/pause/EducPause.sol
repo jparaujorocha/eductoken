@@ -133,25 +133,25 @@ contract EducPause is AccessControl, Pausable, IEducPause {
     /**
      * @dev Legacy method for compatibility - sets granular pause
      * @param functionFlags Bitmask of functions to pause/unpause
-     * @param isPaused Pause or unpause status
+     * @param isPausedGranular Pause or unpause status
      */
-    function setGranularPause(uint32 functionFlags, bool isPaused) 
+    function setGranularPauseLegacy(uint32 functionFlags, bool isPausedGranular) 
         external 
         override
         onlyEmergencyRole 
     {
-        _setGranularPause(functionFlags, isPaused);
+        _setGranularPause(functionFlags, isPausedGranular);
     }
     
     /**
      * @dev Internal implementation of granular pause
      * @param functionFlags Bitmask of functions to pause/unpause
-     * @param isGranularPaused Pause or unpause status
+     * @param isGranularPause Pause or unpause status
      */
-    function _setGranularPause(uint32 functionFlags, bool isGranularPaused) private {
+    function _setGranularPause(uint32 functionFlags, bool isGranularPause) private {
         lastPauseAuthority = msg.sender;
 
-        if (isGranularPaused) {
+        if (isGranularPause) {
             pauseFlags |= functionFlags;
             
             // Record pause action
@@ -186,7 +186,7 @@ contract EducPause is AccessControl, Pausable, IEducPause {
 
         emit PauseEvents.GranularPauseUpdated(
             pauseFlags, 
-            isGranularPaused, 
+            isGranularPause, 
             msg.sender, 
             block.timestamp
         );
@@ -218,13 +218,13 @@ contract EducPause is AccessControl, Pausable, IEducPause {
     /**
      * @dev Checks if a specific function is currently paused
      * @param functionFlag Function flag to check
-     * @return isFunctionPaused Boolean indicating pause status
+     * @return isFunctionPause Boolean indicating pause status
      */
     function isFunctionPaused(uint32 functionFlag) 
         external 
         view 
         override
-        returns (bool isFunctionPaused) 
+        returns (bool isFunctionPause) 
     {
         return paused() && ((pauseFlags & functionFlag) != 0);
     }
@@ -233,13 +233,13 @@ contract EducPause is AccessControl, Pausable, IEducPause {
      * @dev Checks if a specific function is paused for an address
      * @param address_ Address to check
      * @param functionFlag Function flag to check
-     * @return isFunctionPausedForAddress Boolean indicating pause status for the address
+     * @return isPausedForAddress Boolean indicating pause status for the address
      */
     function isFunctionPausedForAddress(address address_, uint32 functionFlag)
         external
         view
         override
-        returns (bool isFunctionPausedForAddress)
+        returns (bool isPausedForAddress)
     {
         bool functionallyPaused = paused() && ((pauseFlags & functionFlag) != 0);
         

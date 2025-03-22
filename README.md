@@ -131,7 +131,13 @@ eductoken/
 │   │   ├── IEducStudent.sol
 │   │   ├── IEducEducator.sol
 │   │   ├── IEducCourse.sol
-│   │   └── ... (other interfaces)
+│   │   ├── IEducLearning.sol
+│   │   ├── IEducConfig.sol
+│   │   ├── IEducPause.sol
+│   │   ├── IEducMultisig.sol
+│   │   ├── IEducProposal.sol
+│   │   ├── IEducVesting.sol
+│   │   └── IEducEmergencyRecovery.sol
 │   ├── proxy/
 │   │   ├── EducTokenUpgradeable.sol
 │   │   └── interfaces/
@@ -164,10 +170,19 @@ eductoken/
 │   ├── verify.js
 │   └── verify-proxy.js
 ├── test/
-│   └── Lock.js
-├── ignition/
-│   └── modules/
-│       └── Lock.js
+│   ├── index.js
+│   ├── unit/
+│   │   ├── EducToken_unit.test.js
+│   │   ├── EducEducator_unit.test.js
+│   │   ├── EducStudent_unit.test.js
+│   │   ├── EducCourse_unit.test.js
+│   │   ├── EducConfig_unit.test.js
+│   │   ├── EducPause_unit.test.js
+│   │   ├── EducMultisig_unit.test.js
+│   │   ├── EducProposal_unit.test.js
+│   │   └── EducLearning_unit.test.js
+│   └── integration/
+│       └── ... (integration tests)
 ├── hardhat.config.js
 ├── package.json
 ├── .solhint.json
@@ -219,6 +234,8 @@ cd eductoken
 npm install
 # or
 yarn install
+# or
+npx hardhat
 ```
 
 3. Create environment file:
@@ -226,10 +243,30 @@ yarn install
 cp .env.example .env
 ```
 
-4. Fill in your environment variables in the `.env` file:
-- Add your Ethereum node provider URLs
-- Add your deployment wallet's private key
-- Add API keys for verification
+4. Configure your `.env` file with the following variables:
+```
+# Network RPC URLs (replace YOUR-API-KEY with your actual API key)
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR-API-KEY
+HOLESKY_RPC_URL=https://eth-holesky.g.alchemy.com/v2/YOUR-API-KEY
+MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR-API-KEY
+
+# API Configurations
+ETHERSCAN_API_URL=https://api.etherscan.io/api
+ETHERSCAN_API_KEY=YOUR-ETHERSCAN-API-KEY
+COINMARKETCAP_API_KEY=YOUR-COINMARKETCAP-API-KEY
+
+# Wallet
+PRIVATE_KEY=YOUR-PRIVATE-KEY-WITHOUT-0x-PREFIX
+
+# Gas Reporting
+REPORT_GAS=true
+```
+
+> **IMPORTANT SECURITY NOTE**: 
+> - Never commit your `.env` file to version control
+> - Keep your private key secure and never share it
+> - For added security, consider using environment variables or a vault for production deployments
+> - Ensure `.env` is included in your `.gitignore` file
 
 ### Compilation
 
@@ -238,6 +275,8 @@ Compile the contracts:
 npm run compile
 # or
 yarn compile
+# or
+npx hardhat compile
 ```
 
 ### Testing
@@ -247,6 +286,8 @@ Run the test suite:
 npm run test
 # or
 yarn test
+# or
+npx hardhat test
 ```
 
 Generate test coverage report:
@@ -254,6 +295,111 @@ Generate test coverage report:
 npm run coverage
 # or
 yarn coverage
+# or
+npx hardhat coverage
+```
+
+## Unit Tests
+
+The project includes comprehensive unit tests for all core contracts. The test suite is organized by contract and covers all essential functionality.
+
+### Test Structure
+
+- **Index File**: `test/index.js` loads all unit tests in sequence
+- **Test Directory**: `test/unit/` contains individual test files for each contract
+
+### Core Contract Tests
+
+1. **EducToken Tests**:
+   - Token deployment and initialization
+   - Role management (admin, minter)
+   - Minting functionality with daily limits
+   - Educational rewards and batch minting
+   - Token burning mechanisms
+   - Pausing functionality
+   - Student contract integration
+   - Account inactivity detection
+
+2. **EducEducator Tests**:
+   - Educator registration and validation
+   - Status management
+   - Mint tracking
+   - Course count management
+   - Role-based access control
+
+3. **EducStudent Tests**:
+   - Student registration and validation
+   - Course completion recording
+   - Token usage tracking
+   - Activity categories management
+   - Student activity monitoring
+   - Inactivity detection
+   - Comprehensive student querying
+
+4. **EducCourse Tests**:
+   - Course creation and validation
+   - Course updates and version tracking
+   - Course completion counting
+   - Integration with EducEducator
+   - Course querying functions
+   - Pause functionality
+
+5. **EducConfig Tests**:
+   - Configuration initialization
+   - Parameter updates and validation
+   - Configuration access control
+   - Constraint enforcement
+   - Pause functionality
+
+6. **EducPause Tests**:
+   - Emergency pause controls
+   - Granular function pausing
+   - Pause overrides by address
+   - Pause history tracking
+   - Role-based access control for pause functions
+
+7. **EducMultisig Tests**:
+   - Multisig initialization with signers and threshold
+   - Signer management (adding, removing)
+   - Threshold management
+   - Proposal count tracking
+   - Signer verification and validation
+
+8. **EducProposal Tests**:
+   - Proposal creation and validation
+   - Voting mechanisms (approval, rejection)
+   - Automatic execution when threshold met
+   - Proposal expiration handling
+   - Proposal status tracking
+   - Role-based access control
+
+9. **EducLearning Tests**:
+   - System initialization and component integration
+   - Course completion processing
+   - Educational reward distribution
+   - Batch reward issuance
+   - Burning inactive tokens
+   - Daily minting limit management
+   - Pause controls
+
+### Running Specific Tests
+
+To run tests for a specific contract:
+
+```bash
+npx hardhat test test/unit/EducToken_unit.test.js
+```
+
+To run all tests with gas usage reporting:
+
+```bash
+REPORT_GAS=true npx hardhat test
+```
+
+To run tests with coverage:
+
+```bash
+npx hardhat coverage
 ```
 
 ### Deployment
@@ -263,6 +409,8 @@ yarn coverage
 npm run node
 # or
 yarn node
+# or
+npx hardhat node
 ```
 
 2. Deploy to local development network:
@@ -270,6 +418,8 @@ yarn node
 npm run deploy:local
 # or
 yarn deploy:local
+# or
+npx hardhat run scripts/deploy.js --network localhost
 ```
 
 3. Deploy to Sepolia testnet:
@@ -277,6 +427,8 @@ yarn deploy:local
 npm run deploy:sepolia
 # or
 yarn deploy:sepolia
+# or
+npx hardhat run scripts/deploy.js --network sepolia
 ```
 
 ### Deploying Advanced Features
@@ -287,6 +439,8 @@ Deploy the upgradeable token system:
 ```bash
 npm run deploy:upgradeable
 # or
+yarn deploy:upgradeable
+# or
 npx hardhat run scripts/deploy-upgradeable.js --network <network-name>
 ```
 
@@ -296,6 +450,8 @@ Deploy the vesting system:
 ```bash
 npm run deploy:vesting
 # or
+yarn deploy:vesting
+# or
 npx hardhat run scripts/deploy-vesting.js --network <network-name>
 ```
 
@@ -304,6 +460,8 @@ npx hardhat run scripts/deploy-vesting.js --network <network-name>
 Deploy or migrate to the emergency recovery system:
 ```bash
 npm run migrate:recovery
+# or
+yarn migrate:recovery
 # or
 npx hardhat run scripts/migrate-to-recovery.js --network <network-name>
 ```
@@ -325,6 +483,8 @@ Verify the deployed contracts on Etherscan:
 ```bash
 # For standard contracts
 npm run verify -- --network <network-name> --contract <contract-path:ContractName> <deployed-address> <constructor-args>
+# or
+npx hardhat verify --network <network-name> --contract <contract-path:ContractName> <deployed-address> <constructor-args>
 
 # For proxy contracts
 export PROXY_ADDRESS=0x...
@@ -382,7 +542,7 @@ await tx.wait();
 ```javascript
 const tx = await educLearningContract.burnInactiveTokens(
   inactiveStudentAddress,
-  ethers.utils.parseEther("50") // Amount to burn
+  ethers.parseEther("50") // Amount to burn
 );
 await tx.wait();
 ```
@@ -516,6 +676,11 @@ npx hardhat run scripts/upgrade-token.js --network <network-name>
    - Confirm you're using the exact compiler version
    - Check that constructor arguments match exactly
 
+6. **Environment File Issues**:
+   - Ensure all required variables are defined in `.env`
+   - Check API keys are active and valid
+   - Verify RPC URLs are accessible
+
 ### Solutions
 
 If you encounter the "cannot estimate gas" error, try:
@@ -529,36 +694,12 @@ For contract size errors:
 # Set viaIR: true in the compiler settings
 ```
 
-## Contributing
-
-We welcome contributions to the EducToken project!
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-Please ensure all tests pass before submitting PRs.
-
-## Roadmap
-
-- **Q2 2025**: Mobile integration and wallet support
-- **Q3 2025**: Multi-chain support for Polygon and Arbitrum
-- **Q4 2025**: Analytics dashboard and achievement NFTs
-
-## Contract Security
-
-- All contracts use OpenZeppelin's secure implementation patterns
-- Critical functions are protected with access control and pausability
-- Reentrancy guards on functions that transfer value
-- Comprehensive input validation
-- Emergency pause and recovery mechanisms
+For `.env` file issues:
+```bash
+# Verify .env variables are loaded
+npx hardhat run --network sepolia scripts/check-env.js
+```
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within this project, please send an email to security@eductoken.com. All security vulnerabilities will be promptly addressed.

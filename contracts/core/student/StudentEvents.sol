@@ -9,11 +9,11 @@ library StudentEvents {
     /**
      * @dev Emitted when a new student is registered
      * @param student Address of the registered student
-     * @param registrationTimestamp When the student was registered
+     * @param timestamp When the student was registered
      */
     event StudentRegistered(
         address indexed student,
-        uint256 registrationTimestamp
+        uint256 timestamp
     );
 
     /**
@@ -22,14 +22,14 @@ library StudentEvents {
      * @param courseId ID of the completed course
      * @param educator Address of the course educator
      * @param tokensAwarded Amount of tokens awarded for completion
-     * @param completionTimestamp When the completion was recorded
+     * @param timestamp When the completion was recorded
      */
     event CourseCompletionRecorded(
         address indexed student,
         string courseId,
         address indexed educator,
         uint256 tokensAwarded,
-        uint256 completionTimestamp
+        uint256 timestamp
     );
 
     /**

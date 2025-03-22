@@ -32,13 +32,13 @@ library PauseEvents {
 
     /**
      * @dev Emitted when granular pause settings are updated
-     * @param pauseFlags Current pause flags after the update
+     * @param functionFlags Flags for functions that were paused/unpaused
      * @param isPaused Whether functions were paused or unpaused
      * @param authority Address that updated the pause settings
      * @param timestamp When the update occurred
      */
     event GranularPauseUpdated(
-        uint32 pauseFlags,
+        uint32 functionFlags,
         bool isPaused,
         address indexed authority,
         uint256 timestamp

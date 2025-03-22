@@ -50,6 +50,7 @@ module.exports = {
     outputFile: "gas-report.txt",
     noColors: true,
     coinmarketcap: process.env.COINMARKETCAP_API_KEY,
+    gasPriceApi: `${process.env.ETHERSCAN_API_URL}?module=proxy&action=eth_gasPrice&apikey=${process.env.ETHERSCAN_API_KEY}`
   },
   contractSizer: {
     alphaSort: true,

@@ -34,28 +34,15 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
         require(account != address(0), "EducEducator: address cannot be zero");
         _;
     }
-    
-    modifier onlyAdmin() {
-        require(hasRole(EducRoles.ADMIN_ROLE, msg.sender), "EducEducator: caller is not admin");
-        _;
-    }
-    
+
     /**
      * @dev Constructor that sets up the admin role
      * @param admin The address that will be granted the admin role
      */
     constructor(address admin) validAddress(admin) {
-        _setupInitialRoles(admin);
-        totalEducators = 0;
-    }
-    
-    /**
-     * @dev Sets up initial roles for the admin
-     * @param admin Address to receive admin role
-     */
-    function _setupInitialRoles(address admin) private {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(EducRoles.ADMIN_ROLE, admin);
+        totalEducators = 0;
     }
 
     /**
@@ -65,7 +52,7 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
     function registerEducator(EducatorTypes.EducatorRegistrationParams calldata params)
         external
         override
-        onlyAdmin
+        onlyRole(EducRoles.ADMIN_ROLE)
         whenNotPaused
         nonReentrant
         validAddress(params.educatorAddress)
@@ -83,16 +70,14 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
     function registerEducator(address educator, uint256 mintLimit)
         external
         override
-        onlyAdmin
+        onlyRole(EducRoles.ADMIN_ROLE)
         whenNotPaused
         nonReentrant
+        validAddress(educator)
+        educatorNotExists(educator)
     {
-        EducatorTypes.EducatorRegistrationParams memory params = EducatorTypes.EducatorRegistrationParams({
-            educatorAddress: educator,
-            mintLimit: mintLimit
-        });
-        
-        this.registerEducator(params);
+        _validateMintLimit(mintLimit);
+        _registerEducator(educator, mintLimit);
     }
     
     /**
@@ -143,7 +128,7 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
     function setEducatorStatus(EducatorTypes.EducatorStatusUpdateParams calldata params)
         external
         override
-        onlyAdmin
+        onlyRole(EducRoles.ADMIN_ROLE)
         nonReentrant
         validAddress(params.educatorAddress)
         educatorExists(params.educatorAddress)
@@ -164,16 +149,12 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
     function setEducatorStatus(address educator, bool isActive, uint256 newMintLimit)
         external
         override
-        onlyAdmin
+        onlyRole(EducRoles.ADMIN_ROLE)
         nonReentrant
+        validAddress(educator)
+        educatorExists(educator)
     {
-        EducatorTypes.EducatorStatusUpdateParams memory params = EducatorTypes.EducatorStatusUpdateParams({
-            educatorAddress: educator,
-            isActive: isActive,
-            newMintLimit: newMintLimit
-        });
-        
-        this.setEducatorStatus(params);
+        _updateEducatorStatus(educator, isActive, newMintLimit);
     }
     
     /**
@@ -215,11 +196,17 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
         external 
         override 
         nonReentrant
-        onlyAdmin
+        onlyRole(EducRoles.ADMIN_ROLE)
         educatorExists(educator)
     {
         EducatorTypes.Educator storage educatorData = educators[educator];
+
         require(educatorData.isActive, "EducEducator: educator is not active");
+
+        require(
+            educatorData.totalMinted + amount <= educatorData.mintLimit,
+            "EducEducator: mint limit exceeded"
+        );
 
         educatorData.totalMinted += amount;
         educatorData.lastMintTime = block.timestamp;
@@ -240,7 +227,7 @@ contract EducEducator is AccessControl, Pausable, ReentrancyGuard, IEducEducator
         external 
         override 
         nonReentrant
-        onlyAdmin
+        onlyRole(EducRoles.ADMIN_ROLE)
         educatorExists(educator)
     {
         EducatorTypes.Educator storage educatorData = educators[educator];

@@ -9,7 +9,7 @@ import "../../interfaces/IEducProposal.sol";
 import "../../interfaces/IEducMultisig.sol";
 import "./ProposalEvents.sol";
 import "./types/ProposalTypes.sol";
-import "contracts/governance/multisig/EducMultisig.sol";
+import "../../governance/multisig/EducMultisig.sol";
 
 /**
  * @title EducProposal
@@ -293,7 +293,7 @@ contract EducProposal is AccessControl, ReentrancyGuard, IEducProposal {
             multisig.removeSigner(signerToRemove);
         } else if (proposal.instructionType == ProposalTypes.InstructionType.ChangeThreshold) {
             // Explicitly convert to uint8
-            uint8 newThreshold = uint8(abi.decode(proposal.data, (uint256)));
+            uint8 newThreshold = uint8(uint256(abi.decode(proposal.data, (uint256))));
             multisig.changeThreshold(newThreshold);
         }
         // Additional instruction types can be added here

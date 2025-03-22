@@ -23,9 +23,9 @@ interface IEducPause {
     /**
      * @dev Legacy method for compatibility - sets granular pause
      * @param functionFlags Bitmask of functions to pause/unpause
-     * @param isPaused Pause or unpause status
+     * @param isPausedGranular Pause or unpause status
      */
-    function setGranularPause(uint32 functionFlags, bool isPaused) external;
+    function setGranularPauseLegacy(uint32 functionFlags, bool isPausedGranular) external;
     
     /**
      * @dev Sets a pause override for specific addresses
@@ -38,20 +38,20 @@ interface IEducPause {
     /**
      * @dev Checks if a specific function is currently paused
      * @param functionFlag Function flag to check
-     * @return isPaused Boolean indicating pause status
+     * @return isFunctionPause Boolean indicating pause status
      */
-    function isFunctionPaused(uint32 functionFlag) external view returns (bool isPaused);
+    function isFunctionPaused(uint32 functionFlag) external view returns (bool isFunctionPause);
     
     /**
      * @dev Checks if a specific function is paused for an address
      * @param address_ Address to check
      * @param functionFlag Function flag to check
-     * @return isPaused Boolean indicating pause status for the address
+     * @return isPausedForAddress Boolean indicating pause status for the address
      */
     function isFunctionPausedForAddress(address address_, uint32 functionFlag) 
         external 
         view 
-        returns (bool isPaused);
+        returns (bool isPausedForAddress);
     
     /**
      * @dev Gets the current pause flags

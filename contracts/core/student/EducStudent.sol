@@ -63,15 +63,11 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
         onlyRole(EducRoles.ADMIN_ROLE)
-    {
-        StudentTypes.StudentRegistrationParams memory params = StudentTypes.StudentRegistrationParams({
-            studentAddress: student
-        });
-        
-        require(params.studentAddress != address(0), "EducStudent: Invalid student address");
-        require(students[params.studentAddress].studentAddress == address(0), "EducStudent: Student already registered");
+        {
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress == address(0), "EducStudent: Student already registered");
 
-        _registerStudent(params.studentAddress);
+        _registerStudent(student);
     }
 
     /**
@@ -114,22 +110,16 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
     {
-        StudentTypes.CourseCompletionParams memory params = StudentTypes.CourseCompletionParams({
-            studentAddress: student,
-            courseId: courseId,
-            tokensAwarded: tokensAwarded
-        });
-        
-        require(params.studentAddress != address(0), "EducStudent: Invalid student address");
-        require(bytes(params.courseId).length > 0, "EducStudent: Invalid course ID");
-        require(!courseCompletions[params.studentAddress][params.courseId], "EducStudent: Course already completed");
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(bytes(courseId).length > 0, "EducStudent: Invalid course ID");
+        require(!courseCompletions[student][courseId], "EducStudent: Course already completed");
         
         // Auto-register student if not exists
-        if (students[params.studentAddress].studentAddress == address(0)) {
-            _registerStudent(params.studentAddress);
+        if (students[student].studentAddress == address(0)) {
+            _registerStudent(student);
         }
 
-        _recordCourseCompletion(params.studentAddress, params.courseId, params.tokensAwarded);
+        _recordCourseCompletion(student, courseId, tokensAwarded);
     }
     
     /**
@@ -168,18 +158,12 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
     {
-        StudentTypes.TokenUsageParams memory params = StudentTypes.TokenUsageParams({
-            studentAddress: student,
-            tokensUsed: tokensUsed,
-            purpose: purpose
-        });
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
+        require(tokensUsed > 0, "EducStudent: Invalid token amount");
+        require(bytes(purpose).length > 0, "EducStudent: Purpose cannot be empty");
         
-        require(params.studentAddress != address(0), "EducStudent: Invalid student address");
-        require(students[params.studentAddress].studentAddress != address(0), "EducStudent: Student not registered");
-        require(params.tokensUsed > 0, "EducStudent: Invalid token amount");
-        require(bytes(params.purpose).length > 0, "EducStudent: Purpose cannot be empty");
-        
-        _recordTokenUsage(params.studentAddress, params.tokensUsed, params.purpose);
+        _recordTokenUsage(student, tokensUsed, purpose);
     }
     
     /**
@@ -235,17 +219,11 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         whenNotPaused
         nonReentrant
     {
-        StudentTypes.CustomActivityParams memory params = StudentTypes.CustomActivityParams({
-            studentAddress: student,
-            category: category,
-            details: details
-        });
+        require(student != address(0), "EducStudent: Invalid student address");
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
+        require(bytes(category).length > 0, "EducStudent: Category cannot be empty");
         
-        require(params.studentAddress != address(0), "EducStudent: Invalid student address");
-        require(students[params.studentAddress].studentAddress != address(0), "EducStudent: Student not registered");
-        require(bytes(params.category).length > 0, "EducStudent: Category cannot be empty");
-        
-        _recordCustomActivity(params.studentAddress, params.category, params.details);
+        _recordCustomActivity(student, category, details);
     }
 
     /**
@@ -377,6 +355,7 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         override
         returns (StudentTypes.Student memory studentInfo)
     {
+        require(students[student].studentAddress != address(0), "EducStudent: Student not registered");
         return students[student];
     }
     
@@ -420,7 +399,6 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         _recordActivity(student, "Registration", currentTime);
 
         emit StudentEvents.StudentRegistered(student, currentTime);
-        emit StudentEvents.StudentActivityUpdated(student, "Registration", currentTime);
     }
     
     /**
@@ -494,12 +472,6 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
             purpose,
             currentTime
         );
-        
-        emit StudentEvents.StudentActivityUpdated(
-            student, 
-            string(abi.encodePacked("TokenUsage: ", purpose)), 
-            currentTime
-        );
     }
     
     /**
@@ -516,7 +488,12 @@ contract EducStudent is AccessControl, Pausable, ReentrancyGuard, IEducStudent {
         }
         
         studentActivityCategories[student].push(category);
-        emit StudentEvents.StudentActivityCategoryAdded(student, category, block.timestamp);
+        
+        emit StudentEvents.StudentActivityCategoryAdded(
+            student, 
+            category, 
+            block.timestamp
+        );
     }
     
     /**
